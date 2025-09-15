@@ -8,11 +8,14 @@
 #include "graph.hpp"
 #include "instance.hpp"
 #include "utils.hpp"
-
+#include "modified_Astar.hpp"
+#include "traffic_map.hpp"
+#include "guidance_heuristic.hpp"
 // objective function
 enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS };
+enum Traffic_OP { NONE, PRE_TRAFFIC, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW};
 std::ostream& operator<<(std::ostream& os, const Objective objective);
-
+std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic);
 // PIBT agent
 struct Agent {
   const uint id;
@@ -44,7 +47,7 @@ struct HNode {
   uint g;        // g-value (might be updated)
   const uint h;  // h-value
   uint f;        // g + h (might be updated)
-
+  uint current_make_span = 0;
   // for low-level search
   std::vector<float> priorities;
   std::vector<uint> order;
@@ -53,6 +56,11 @@ struct HNode {
   HNode(const Config& _C, DistTable& D, HNode* _parent, const uint _g,
         const uint _h);
   ~HNode();
+
+  void set_make_span(uint _current_make_span) {
+     current_make_span = _current_make_span;
+  }
+
 };
 using HNodes = std::vector<HNode*>;
 
@@ -64,6 +72,7 @@ struct Planner {
 
   // hyper parameters
   const Objective objective;
+  const Traffic_OP traffic_op;
   const float RESTART_RATE;  // random restart
 
   // solver utils
@@ -79,12 +88,30 @@ struct Planner {
   Agents occupied_now;                          // for quick collision checking
   Agents occupied_next;                         // for quick collision checking
 
+  uint best_makespan = 0;
+  uint time_bucket_size = 20; // Time bucket size for time-period based traffic maps
+  uint current_time_bucket = 0;
+  uint max_time_period = 20; // Maximum time period for traffic maps
+
+  double learning_rate = 0.6;
+  // double decay_rate = 0.05; 
+
+
+  TrafficMap traffic_map ; // Traffic map for A* search
+  std::vector<TrafficMap> time_period_traffic_map; // Time-period based traffic maps for A* search
+  ModifiedAstar astar_search; // A* search for traffic path finding
+  GuidanceHeuristic guidance_heuristic; // Guidance heuristic for pathfinding
+
   Planner(const Instance* _ins, const Deadline* _deadline, std::mt19937* _MT,
           const int _verbose = 0,
           // other parameters
           const Objective _objective = OBJ_NONE,
+          const Traffic_OP _traffic = NONE,
           const float _restart_rate = 0.001);
   ~Planner();
+
+
+  
   Solution solve(std::string& additional_info);
   void expand_lowlevel_tree(HNode* H, LNode* L);
   void rewrite(HNode* H_from, HNode* T, HNode* H_goal,
@@ -101,6 +128,12 @@ struct Planner {
                         Vertex* v_pusher_origin, Vertex* v_puller_origin);
   bool is_swap_possible(Vertex* v_pusher_origin, Vertex* v_puller_origin);
 
+  // traffic op 
+
+  void running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal, bool is_goal);
+  void incremental_increase_traffic_with_time_window(HNode* H_goal);
+  void incremental_increase_traffic(HNode* H_goal);
+  void select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal);
   // utilities
   template <typename... Body>
   void solver_info(const int level, Body&&... body)

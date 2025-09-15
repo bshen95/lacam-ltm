@@ -11,4 +11,5 @@
 Solution solve(const Instance& ins, std::string& additional_info,
                const int verbose = 0, const Deadline* deadline = nullptr,
                std::mt19937* MT = nullptr, const Objective objective = OBJ_NONE,
+               const Traffic_OP traffic = NONE,
                const float restart_rate = 0.001);

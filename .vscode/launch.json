@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "lldb Launch2",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/main",
+            "args": [
+                "-v", "3",
+                "-m", "assets/random-32-32-10.map",
+                "-t", "6000",
+                "-N", "400",
+                "--objective", "2",
+                "-s", "1",
+                "--traffic", "2",
+            ],
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb", 
+        }
+    ]
+}
