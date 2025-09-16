@@ -13,7 +13,7 @@
 #include "guidance_heuristic.hpp"
 // objective function
 enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS };
-enum Traffic_OP { NONE, PRE_TRAFFIC, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW};
+enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW};
 std::ostream& operator<<(std::ostream& os, const Objective objective);
 std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic);
 // PIBT agent
@@ -48,6 +48,7 @@ struct HNode {
   const uint h;  // h-value
   uint f;        // g + h (might be updated)
   uint current_make_span = 0;
+  uint order_updated = 0;
   // for low-level search
   std::vector<float> priorities;
   std::vector<uint> order;
@@ -59,6 +60,41 @@ struct HNode {
 
   void set_make_span(uint _current_make_span) {
      current_make_span = _current_make_span;
+  }
+
+  void set_priority_and_order(const std::vector<uint>& input_order) {
+    // Set the order directly from the input
+    order = input_order;
+
+    // Update priorities based on the new order
+    for (size_t i = 0; i < order.size(); ++i) {
+        priorities[order[i]] = (float) (order.size() - i)/ order.size(); // Higher priority for earlier indices
+    }
+  }
+
+  void reordering_based_on_traffic(size_t N, GuidanceHeuristic& G){
+    if (parent == nullptr) {
+      // initialize
+      for (uint i = 0; i < N; ++i) priorities[i] = (float)G.get_Astar_heuristic(i, C[i]->id) / N;
+    } 
+    // set order
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(),
+              [&](uint i, uint j) { return priorities[i] > priorities[j]; });
+  }
+
+  void reordering(size_t N, DistTable& D) {
+    for (size_t i = 0; i < N; ++i) {
+      if (D.get(i, C[i])== 0) {
+        priorities[i] = priorities[i] - (int)priorities[i];
+      }else{
+        priorities[i] = priorities[i] + 1;
+      }
+    }
+    // set order
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(),
+              [&](uint i, uint j) { return priorities[i] > priorities[j]; });
   }
 
 };
@@ -93,6 +129,7 @@ struct Planner {
   uint current_time_bucket = 0;
   uint max_time_period = 20; // Maximum time period for traffic maps
 
+  uint order_updated_times = 0;
   double learning_rate = 0.6;
   // double decay_rate = 0.05; 
 
@@ -120,6 +157,7 @@ struct Planner {
   uint get_edge_cost(HNode* H_from, HNode* H_to);
   uint get_h_value(const Config& C);
   bool get_new_config(HNode* H, LNode* L);
+  
   bool funcPIBT(Agent* ai);
 
   // swap operation
@@ -133,7 +171,13 @@ struct Planner {
   void running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal, bool is_goal);
   void incremental_increase_traffic_with_time_window(HNode* H_goal);
   void incremental_increase_traffic(HNode* H_goal);
+  void traffic_optimization(HNode* H_goal);
+  void pre_traffic_optimization();
   void select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal);
+  void propagate_order_to_neighbors(HNode* current_node);
+  void learn_priority_order(HNode* H_goal);
+  void get_edge_cost_per_agent(std::vector<double>& agent_cost, 
+  const Config& C1, const Config& C2);
   // utilities
   template <typename... Body>
   void solver_info(const int level, Body&&... body)

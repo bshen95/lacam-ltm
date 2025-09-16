@@ -176,6 +176,95 @@ void Planner::incremental_increase_traffic_with_time_window(HNode* H_goal){
   // std::cout<<"finishing increasing traffic map" << std::endl;
 }
 
+
+void Planner::pre_traffic_optimization(){
+
+
+  traffic_map.reset();
+  std::vector<std::vector<uint>> solution_nodes;
+  for( int i = 0 ; i < N ; i++){
+    auto path = astar_search.compute_traffic_path_index(ins->starts[i]->index, ins->goals[i]->index);
+    solution_nodes.push_back(path);
+  }
+  traffic_map.initialize_traffic_map(solution_nodes);
+  std::vector<std::vector<uint>> revised_path = solution_nodes;
+  std::vector<uint> ordering = std::vector<uint>(N);
+  std::iota(ordering.begin(), ordering.end(), 0);
+  std::shuffle(ordering.begin(),ordering.end(), *MT);
+  bool stop = false;
+  while (!stop){
+    for (size_t i = 0; i < ordering.size(); ++i) {
+      int agent_id = ordering[i];
+      traffic_map.remove_path(revised_path[agent_id]);
+      auto path = astar_search.compute_traffic_path_index(ins->starts[agent_id]->index, ins->goals[agent_id]->index);
+      if (path.empty()) {
+        std::cout << "No path found for agent " << agent_id << std::endl;
+        continue; // No path found, skip this agent
+      }
+      traffic_map.add_path(path);
+      revised_path[agent_id] = path;
+      // update the edge weights in the traffic map
+    } 
+    if(is_expired_time(deadline, 10000)){
+      // run optimization for 10 sec;
+      stop = true;
+      break;
+    }
+  } 
+  guidance_heuristic.set_gudiance_path(revised_path);
+}
+
+
+void Planner::traffic_optimization(HNode* H_goal){
+  HNode* current = H_goal;
+  std::vector<std::vector<uint>> solution_nodes = std::vector<std::vector<uint>>(N);
+  for (uint i = 0; i < N; ++i) {
+    solution_nodes[i].push_back(H_goal->C[i]->index);
+  }
+  while (current->parent != nullptr) {
+    for(uint i = 0; i < N; ++i) {
+      if(solution_nodes[i].size() == 1 
+      && current->C[i]->index == H_goal->C[i]->index){
+        continue; // skip if already at goal
+      }
+      solution_nodes[i].push_back(current->C[i]->index);
+    }
+    current = current->parent;
+  }
+  for (uint i = 0; i < N; ++i) {
+    solution_nodes[i].push_back(ins->starts[i]->index);
+    std::reverse(solution_nodes[i].begin(), solution_nodes[i].end());
+  }
+
+
+
+  traffic_map.reset();
+  traffic_map.initialize_traffic_map(solution_nodes);
+  std::vector<std::vector<uint>> revised_path = solution_nodes;
+  std::vector<uint> ordering = std::vector<uint>(N);
+  std::iota(ordering.begin(), ordering.end(), 0);
+
+  int times = 5; 
+  while (times > 0 ){
+    std::shuffle(ordering.begin(),ordering.end(), *MT);
+    for (size_t i = 0; i < ordering.size(); ++i) {
+      int agent_id = ordering[i];
+      traffic_map.remove_path(revised_path[agent_id]);
+      auto path = astar_search.compute_traffic_path_index(ins->starts[agent_id]->index, ins->goals[agent_id]->index);
+      if (path.empty()) {
+        std::cout << "No path found for agent " << agent_id << std::endl;
+        continue; // No path found, skip this agent
+      }
+      traffic_map.add_path(path);
+      revised_path[agent_id] = path;
+      // update the edge weights in the traffic map
+    } 
+    times --;
+  } 
+  guidance_heuristic.set_gudiance_path(revised_path);
+}
+
+
 void Planner::select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal){
   HNode* current = H_goal;
   while (current->parent != nullptr) {
@@ -185,10 +274,94 @@ void Planner::select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal){
   OPEN.push(current);
 }
 
+void Planner::propagate_order_to_neighbors(HNode* current_node) {
+  // Iterate through all neighbors of the current node
+  for (auto neighbor : current_node->neighbor) {
+    // Update the neighbor's order based on the current node's order
+    if(neighbor->order_updated != order_updated_times){
+      neighbor->set_priority_and_order(current_node->order);
+      neighbor->reordering(N, D);
+      while (!neighbor->search_tree.empty()) {
+        delete neighbor->search_tree.front();
+        neighbor->search_tree.pop();
+      }
+      neighbor->search_tree.push(new LNode());
+
+      neighbor->order_updated = order_updated_times;
+      propagate_order_to_neighbors(neighbor);
+
+    }
+  }
+}
+
+void Planner::get_edge_cost_per_agent(std::vector<double>& agent_cost, 
+  const Config& C1, const Config& C2)
+{
+  if (objective == OBJ_SUM_OF_LOSS) {
+    for (uint i = 0; i < N; ++i) {
+      if (C1[i] != ins->goals[i] || C2[i] != ins->goals[i]) {
+        agent_cost[i] += 1;
+      }
+    }
+  }else{
+      // default: makespan
+    for (uint i = 0; i < N; ++i) {
+      agent_cost[i] += 1;
+    }
+  }
+}
+void Planner::learn_priority_order(HNode* input_H_goal) {
+  std::vector<double> agent_cost(N, 0);
+  std::vector<double> agent_ratio(N, 0);
+  order_updated_times ++;
+  HNode* current = input_H_goal;
+  current->order_updated = order_updated_times;
+  current = input_H_goal;
+  while (current->parent != nullptr) {
+    get_edge_cost_per_agent(agent_cost,current->C,current->parent->C);
+
+    for (uint i = 0; i < N; ++i) {
+      if( D.get(i,current->parent->C[i]) == 0){
+        // a large number 
+        agent_ratio[i] = 10000;
+      }else{
+        agent_ratio[i] = agent_cost[i] / (D.get(i, current->parent->C[i]) -
+                                          D.get(i, input_H_goal->C[i]));
+      }
+    }
+
+    // std::uniform_real_distribution<double> noise_dist(-0.1, 0.1); // Adjust range as needed
+    // for (size_t i = 0; i < agent_ratio.size(); ++i) {
+    //     agent_ratio[i] = agent_ratio[i] * (1 + noise_dist(*MT));
+    // }
+    std::sort(current->parent->order.begin(),current->parent->order.end(), [&](uint i, uint j) {
+        return (agent_ratio[i] ) < (agent_ratio[j]);
+    });
+    current->parent->set_priority_and_order(current->parent->order);
+    current->parent->reordering(N,D);
+    while (!current->parent->search_tree.empty()) {
+      delete current->parent->search_tree.front();
+      current->parent->search_tree.pop();
+    }
+    current->parent->search_tree.push(new LNode());
+    current->parent->order_updated = order_updated_times;
+    // TODO: propagate the order to neighbourhood. 
+    propagate_order_to_neighbors(current->parent);
+    current = current->parent;
+    // makespan --;
+  }
+}
+
 void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal, bool is_goal){
   // if(traffic_op == INCRE_TRAFFIC){
   // std::cout<< " increasing "<< std::endl;
-  if(traffic_op == INCRE_TRAFFIC){
+
+  // if(is_goal){
+  //   learn_priority_order(H_goal);
+  // }
+  if(traffic_op == ONLINE_TRAFFIC){
+    traffic_optimization(H_goal);
+  }else if(traffic_op == INCRE_TRAFFIC){
     incremental_increase_traffic(H_goal);    
   }else if (traffic_op == INCRE_TRAFFIC_WITH_TW){
     incremental_increase_traffic_with_time_window(H_goal);
@@ -204,9 +377,13 @@ Solution Planner::solve(std::string& additional_info)
 {
   solver_info(1, "start search");
   if(traffic_op != NONE){
+    order_updated_times = 0;
     best_makespan  = 0;
     guidance_heuristic.initialized = false;
     guidance_heuristic.setup(ins);
+    if(traffic_op == PRE_TRAFFIC){
+      pre_traffic_optimization();
+    }
   }
   // setup agents
   for (auto i = 0; i < N; ++i) A[i] = new Agent(i);
@@ -240,7 +417,7 @@ Solution Planner::solve(std::string& additional_info)
     // check lower bounds
     if (H_goal != nullptr && H->f >= H_goal->f) {
       OPEN.pop();
-      if(traffic_op != NONE){
+      if(traffic_op != NONE && traffic_op != PRE_TRAFFIC){
         running_traffic_optimization(OPEN, H, false);
       }
       continue;
@@ -251,7 +428,7 @@ Solution Planner::solve(std::string& additional_info)
       H_goal = H;
       solver_info(1, "found solution, cost: ", H->g);
       if (objective == OBJ_NONE) break;
-      if(traffic_op != NONE){
+      if(traffic_op != NONE && traffic_op != PRE_TRAFFIC){
         running_traffic_optimization(OPEN, H_goal, true);
       }
       continue;
@@ -295,7 +472,7 @@ Solution Planner::solve(std::string& additional_info)
       auto H_insert = (MT != nullptr && get_random_float(MT) >= RESTART_RATE)
                           ? iter->second
                           : H_init;
-      if(traffic_op == NONE){
+      if(traffic_op == NONE || traffic_op == PRE_TRAFFIC){
         if (H_goal == nullptr || H_insert->f < H_goal->f) OPEN.push(H_insert);
       }else{
         OPEN.push(H_insert);
@@ -306,7 +483,7 @@ Solution Planner::solve(std::string& additional_info)
           C_new, D, H, H->g + get_edge_cost(H->C, C_new), get_h_value(C_new));
       H_new->set_make_span(H->current_make_span + 1);
       EXPLORED[H_new->C] = H_new;
-      if(traffic_op == NONE){
+      if(traffic_op == NONE || traffic_op == PRE_TRAFFIC){
         if (H_goal == nullptr || H_new->f < H_goal->f) OPEN.push(H_new);
       }else{
         OPEN.push(H_new);
@@ -364,7 +541,7 @@ void Planner::rewrite(HNode* H_from, HNode* H_to, HNode* H_goal,
       auto g_val = n_from->g + get_edge_cost(n_from->C, n_to->C);
       if (g_val < n_to->g) {
         if (n_to == H_goal){
-          if(traffic_op != NONE){
+          if(traffic_op != NONE && traffic_op != PRE_TRAFFIC){
             solver_info(1, "cost update: ", n_to->g, " -> ", g_val);
             n_to->g = g_val;
             n_to->f = n_to->g + n_to->h;
@@ -487,14 +664,7 @@ bool Planner::funcPIBT(Agent* ai)
   }
   C_next[i][K] = ai->v_now;
 
-  if(traffic_op == NONE){
-    // sort
-    std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
-              [&](Vertex* const v, Vertex* const u) {
-                return D.get(i, v) + tie_breakers[v->id] <
-                      D.get(i, u) + tie_breakers[u->id];
-              });
-  }else if (traffic_op == INCRE_TRAFFIC || traffic_op == INCRE_TRAFFIC_WITH_TW){
+  if (traffic_op == INCRE_TRAFFIC || traffic_op == INCRE_TRAFFIC_WITH_TW){
     if(!guidance_heuristic.initialized){
       std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
                 [&](Vertex* const v, Vertex* const u) {
@@ -508,6 +678,29 @@ bool Planner::funcPIBT(Agent* ai)
                 guidance_heuristic.get_Astar_heuristic(i, u->id) + tie_breakers[u->id];
               });
     }
+  } else if (traffic_op == ONLINE_TRAFFIC || traffic_op == PRE_TRAFFIC)
+  {
+    if(!guidance_heuristic.initialized){
+      std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
+                [&](Vertex* const v, Vertex* const u) {
+                  return D.get(i, v) + tie_breakers[v->id] <
+                  D.get(i, u) + tie_breakers[u->id];
+                });
+    }else{
+        std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
+              [&](Vertex* const v, Vertex* const u) {
+                return guidance_heuristic.get_heuristic(i,v->index) + tie_breakers[v->id] <
+                guidance_heuristic.get_heuristic(i,u->index) + tie_breakers[u->id];
+              });
+    }
+  }
+  else{
+    // sort
+    std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
+              [&](Vertex* const v, Vertex* const u) {
+                return D.get(i, v) + tie_breakers[v->id] <
+                      D.get(i, u) + tie_breakers[u->id];
+              }); 
   }
   
   Agent* swap_agent = swap_possible_and_required(ai);
