@@ -102,10 +102,10 @@ void Planner::incremental_increase_traffic(HNode* H_goal){
   }
   while (current->parent != nullptr) {
     for(uint i = 0; i < N; ++i) {
-      if(solution_nodes[i].size() == 1 
-      && current->C[i]->index == H_goal->C[i]->index){
-        continue; // skip if already at goal
-      }
+      // if(solution_nodes[i].size() == 1 
+      // && current->C[i]->index == H_goal->C[i]->index){
+      //   continue; // skip if already at goal
+      // }
       solution_nodes[i].push_back(current->C[i]->index);
     }
     current = current->parent;
@@ -136,10 +136,10 @@ void Planner::incremental_increase_traffic_with_time_window(HNode* H_goal){
   }
   while (current->parent != nullptr) {
     for(uint i = 0; i < N; ++i) {
-      if(solution_nodes[i].size() == 1 
-      && current->C[i]->index == H_goal->C[i]->index){
-        continue; // skip if already at goal
-      }
+      // if(solution_nodes[i].size() == 1 
+      // && current->C[i]->index == H_goal->C[i]->index){
+      //   continue; // skip if already at goal
+      // }
       solution_nodes[i].push_back(current->C[i]->index);
     }
     current = current->parent;
@@ -216,37 +216,33 @@ void Planner::pre_traffic_optimization(){
 
 
 void Planner::traffic_optimization(HNode* H_goal){
-  HNode* current = H_goal;
-  std::vector<std::vector<uint>> solution_nodes = std::vector<std::vector<uint>>(N);
-  for (uint i = 0; i < N; ++i) {
-    solution_nodes[i].push_back(H_goal->C[i]->index);
-  }
-  while (current->parent != nullptr) {
-    for(uint i = 0; i < N; ++i) {
-      if(solution_nodes[i].size() == 1 
-      && current->C[i]->index == H_goal->C[i]->index){
-        continue; // skip if already at goal
-      }
-      solution_nodes[i].push_back(current->C[i]->index);
+  if(H_goal->h == 0){
+    // at goal
+    HNode* current = H_goal;
+    std::vector<std::vector<uint>> solution_nodes = std::vector<std::vector<uint>>(N);
+    for (uint i = 0; i < N; ++i) {
+      solution_nodes[i].push_back(H_goal->C[i]->index);
     }
-    current = current->parent;
+    while (current->parent != nullptr) {
+      for(uint i = 0; i < N; ++i) {
+        solution_nodes[i].push_back(current->C[i]->index);
+      }
+      current = current->parent;
+    }
+    for (uint i = 0; i < N; ++i) {
+      solution_nodes[i].push_back(ins->starts[i]->index);
+      std::reverse(solution_nodes[i].begin(), solution_nodes[i].end());
+    }
+    traffic_map.reset();
+    traffic_map.initialize_traffic_map(solution_nodes);
+    revised_path = solution_nodes;
   }
-  for (uint i = 0; i < N; ++i) {
-    solution_nodes[i].push_back(ins->starts[i]->index);
-    std::reverse(solution_nodes[i].begin(), solution_nodes[i].end());
-  }
-
-
-
-  traffic_map.reset();
-  traffic_map.initialize_traffic_map(solution_nodes);
-  std::vector<std::vector<uint>> revised_path = solution_nodes;
   std::vector<uint> ordering = std::vector<uint>(N);
   std::iota(ordering.begin(), ordering.end(), 0);
-
-  int times = 5; 
+  std::shuffle(ordering.begin(),ordering.end(), *MT);
+  int times = 10; 
   while (times > 0 ){
-    std::shuffle(ordering.begin(),ordering.end(), *MT);
+    // std::shuffle(ordering.begin(),ordering.end(), *MT);
     for (size_t i = 0; i < ordering.size(); ++i) {
       int agent_id = ordering[i];
       traffic_map.remove_path(revised_path[agent_id]);
@@ -359,6 +355,9 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
   // if(is_goal){
   //   learn_priority_order(H_goal);
   // }
+  // std::cout<< "restarting........"<<std::endl;
+
+  // learning_rate = 1;
   if(traffic_op == ONLINE_TRAFFIC){
     traffic_optimization(H_goal);
   }else if(traffic_op == INCRE_TRAFFIC){

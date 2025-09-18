@@ -133,7 +133,7 @@ struct Planner {
   double learning_rate = 0.6;
   // double decay_rate = 0.05; 
 
-
+  std::vector<std::vector<uint>> revised_path;
   TrafficMap traffic_map ; // Traffic map for A* search
   std::vector<TrafficMap> time_period_traffic_map; // Time-period based traffic maps for A* search
   ModifiedAstar astar_search; // A* search for traffic path finding
@@ -178,6 +178,7 @@ struct Planner {
   void learn_priority_order(HNode* H_goal);
   void get_edge_cost_per_agent(std::vector<double>& agent_cost, 
   const Config& C1, const Config& C2);
+  void export_solution_from_HNode(HNode* goal, const std::string& filename);
   // utilities
   template <typename... Body>
   void solver_info(const int level, Body&&... body)

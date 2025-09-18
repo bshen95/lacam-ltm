@@ -189,7 +189,7 @@ struct TrafficMap {
       }
     }
 
-    void record_incremental_flow( double learning_rate){
+  void record_incremental_flow( double learning_rate){
       // for (size_t i = 0; i < incremental_flow.size(); ++i) {
       //   incremental_flow[i] = incremental_flow[i] * 0.8; // reset to 1
       // }
@@ -212,12 +212,6 @@ struct TrafficMap {
       }
     }
 
-
-    void reset_incremental_flow(){
-      for(int i = 0 ; i < incremental_flow.size(); i++){
-        incremental_flow[i] = 1;
-      }
-    }
     
     void initialize_traffic_map(const std::vector<std::vector<uint>>& agents_paths) {
       // initialize_ traffic map based on existing paths.
