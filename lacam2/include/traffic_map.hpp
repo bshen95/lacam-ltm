@@ -207,7 +207,7 @@ struct TrafficMap {
         if( edge.first == edge.second) continue;
         int edge_idx = edge_index(edge.first, edge.second);
         auto [t1, t2] = get_traffic_cost(edge.first, edge.second);
-        incremental_flow[edge_idx] += 0.6*(t1);
+        incremental_flow[edge_idx] += learning_rate*(t1 + t2 );
         
         // incremental_flow[edge_idx] += (t1 + t2);
       }

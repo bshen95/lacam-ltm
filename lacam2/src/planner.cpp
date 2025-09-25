@@ -417,11 +417,11 @@ void Planner::select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal){
     current = current->parent;
   }
 
-  // while (!current->search_tree.empty()) {
-  //   delete current->search_tree.front();
-  //   current->search_tree.pop();
-  // }
-  // current->search_tree.push(new LNode());
+  while (!current->search_tree.empty()) {
+    delete current->search_tree.front();
+    current->search_tree.pop();
+  }
+  current->search_tree.push(new LNode());
   OPEN = std::stack<HNode*>();
   OPEN.push(current);
 }
@@ -540,8 +540,12 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
   //   export_solution_from_HNode(H_goal,"solution_to_" + std::to_string(solution_id)+".csv");
   //   solution_id ++;
   // }
+  // if(is_goal){
+  //     learning_rate = 0.6;
+  // }else{
+  //     learning_rate = 1.2;
+  // }
   learning_rate = 0.6;
-  
   // learn_priority_order(H_goal);
   if(traffic_op == ONLINE_TRAFFIC){
     traffic_optimization(H_goal);
@@ -552,7 +556,7 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
   }else if (traffic_op == INCRE_PLUS_ONLINE_TRAFFIC){
     incremental_increase_traffic_plus_traffic_op(H_goal);
   }
-  clean_constraint(H_goal);
+  // clean_constraint(H_goal);
   select_restart_node(OPEN,H_goal);
 
 }
