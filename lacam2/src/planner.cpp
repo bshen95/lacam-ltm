@@ -279,7 +279,7 @@ void Planner::pre_traffic_optimization(){
       revised_path[agent_id] = path;
       // update the edge weights in the traffic map
     } 
-    if(is_expired_time(deadline, 30000)){
+    if(is_expired_time(deadline, 10000)){
       // run optimization for 10 sec;
       stop = true;
       break;
@@ -422,6 +422,7 @@ void Planner::select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal){
     current->search_tree.pop();
   }
   current->search_tree.push(new LNode());
+  current->reordering_based_on_traffic(N,guidance_heuristic);
   OPEN = std::stack<HNode*>();
   OPEN.push(current);
 }
@@ -545,7 +546,7 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
   // }else{
   //     learning_rate = 1.2;
   // }
-  learning_rate = 0.6;
+  learning_rate = 1;
   // learn_priority_order(H_goal);
   if(traffic_op == ONLINE_TRAFFIC){
     traffic_optimization(H_goal);

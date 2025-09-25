@@ -101,6 +101,7 @@ struct TrafficMap {
       int edge_idx = edge_index(a, b);
       int edge_idx2 = edge_index(b, a);
       return { ( edge_flow[edge_idx] + 1) * edge_flow[edge_idx2], (vertex_flow[b]) / 2 };
+      //  return { edge_flow[edge_idx] ,  (vertex_flow[b])/2};
     }
 
     void reset() {
@@ -167,9 +168,9 @@ struct TrafficMap {
 
 
     void record_incremental_flow(){
-      // for (size_t i = 0; i < incremental_flow.size(); ++i) {
-      //   incremental_flow[i] = incremental_flow[i] * 0.8; // reset to 1
-      // }
+      for (size_t i = 0; i < incremental_flow.size(); ++i) {
+        incremental_flow[i] = incremental_flow[i] * 0.9; // reset to 1
+      }
 
       std::unordered_set<std::pair<int,int>, EdgePairHash> visited_edge;
       for(size_t i = 0; i < visited.size(); ++i) {
@@ -184,14 +185,13 @@ struct TrafficMap {
         if( edge.first == edge.second) continue;
         int edge_idx = edge_index(edge.first, edge.second);
         auto [t1, t2] = get_traffic_cost(edge.first, edge.second);
-        incremental_flow[edge_idx] += 0.6*( t1 + t2);
-        // incremental_flow[edge_idx] += (t1 + t2);
+        incremental_flow[edge_idx] += (t1 + t2);
       }
     }
 
   void record_incremental_flow( double learning_rate){
       // for (size_t i = 0; i < incremental_flow.size(); ++i) {
-      //   incremental_flow[i] = incremental_flow[i] * 0.8; // reset to 1
+      //   incremental_flow[i] = incremental_flow[i] * 0.9; // reset to 1
       // }
 
       std::unordered_set<std::pair<int,int>, EdgePairHash> visited_edge;
@@ -207,8 +207,8 @@ struct TrafficMap {
         if( edge.first == edge.second) continue;
         int edge_idx = edge_index(edge.first, edge.second);
         auto [t1, t2] = get_traffic_cost(edge.first, edge.second);
-        incremental_flow[edge_idx] += learning_rate*(t1 + t2 );
-        
+        // incremental_flow[edge_idx] += learning_rate*(t1 + t2 );
+        incremental_flow[edge_idx] +=  learning_rate*(t1 + t2 );
         // incremental_flow[edge_idx] += (t1 + t2);
       }
     }
