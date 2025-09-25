@@ -18,6 +18,7 @@ class ModifiedAstar{
         void reset();
         inline int manhattan_dist(const Vertex* v, const Vertex* n);
         std::vector<uint> compute_traffic_path_index(uint start_id, uint end_id);
+        std::vector<uint> compute_traffic_path_index_consider_past_traffic(uint start_id, uint end_id);
     private:
         std::vector<V_Node> node_table;     
         pqueue_min_f OPEN; 

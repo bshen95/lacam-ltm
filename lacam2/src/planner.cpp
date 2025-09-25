@@ -122,7 +122,6 @@ void Planner::incremental_increase_traffic(HNode* H_goal){
   guidance_heuristic.set_traffic_map(&traffic_map);
 }
 
-
 void Planner::incremental_increase_traffic_with_time_window(HNode* H_goal){
   guidance_heuristic.initialized = true;
   for(uint t = 0; t < time_bucket_size; t++){
@@ -176,21 +175,96 @@ void Planner::incremental_increase_traffic_with_time_window(HNode* H_goal){
   // std::cout<<"finishing increasing traffic map" << std::endl;
 }
 
+void Planner::incremental_increase_traffic_plus_traffic_op(HNode* H_goal){
+  guidance_heuristic.initialized = true;
+  traffic_map.reset();
+  int solution_makespan =  H_goal->current_make_span +1 ;
+  HNode* current = H_goal;
+  std::vector<std::vector<uint>> solution_nodes = std::vector<std::vector<uint>>(N);
+  for (uint i = 0; i < N; ++i) {
+    solution_nodes[i].push_back(H_goal->C[i]->index);
+  }
+  while (current->parent != nullptr) {
+    for(uint i = 0; i < N; ++i) {
+      solution_nodes[i].push_back(current->C[i]->index);
+    }
+    current = current->parent;
+  }
+  for (uint i = 0; i < N; ++i) {
+    solution_nodes[i].push_back(ins->starts[i]->index);
+    std::reverse(solution_nodes[i].begin(), solution_nodes[i].end());
+  }
+  for(auto solution : solution_nodes){
+    traffic_map.add_incremental_flow_path(solution);
+  }
+  traffic_map.record_incremental_flow(learning_rate);
+
+  // //considering previous traffic to optimize the flow; 
+  // if(H_goal->h == 0){
+  //   // at goal
+  //   HNode* current = H_goal;
+  //   std::vector<std::vector<uint>> solution_nodes = std::vector<std::vector<uint>>(N);
+  //   for (uint i = 0; i < N; ++i) {
+  //     solution_nodes[i].push_back(H_goal->C[i]->index);
+  //   }
+  //   while (current->parent != nullptr) {
+  //     for(uint i = 0; i < N; ++i) {
+  //       solution_nodes[i].push_back(current->C[i]->index);
+  //     }
+  //     current = current->parent;
+  //   }
+  //   for (uint i = 0; i < N; ++i) {
+  //     solution_nodes[i].push_back(ins->starts[i]->index);
+  //     std::reverse(solution_nodes[i].begin(), solution_nodes[i].end());
+  //   }
+  //   revised_path = solution_nodes;
+  // }
+
+  traffic_map.reset();
+  revised_path.clear();
+  for( int i = 0 ; i < N ; i++){
+    auto path = astar_search.compute_traffic_path_index_consider_past_traffic(ins->starts[i]->index, ins->goals[i]->index);
+    traffic_map.add_path(path);
+    revised_path.push_back(path);
+  }
+  // traffic_map.initialize_traffic_map(revised_path);
+
+  std::vector<uint> ordering = std::vector<uint>(N);
+  std::iota(ordering.begin(), ordering.end(), 0);
+  // std::shuffle(ordering.begin(),ordering.end(), *MT);
+  int times = 10; 
+  while (times > 0 ){
+    // std::shuffle(ordering.begin(),ordering.end(), *MT);
+    for (size_t i = 0; i < ordering.size(); ++i) {
+      int agent_id = ordering[i];
+      traffic_map.remove_path(revised_path[agent_id]);
+      auto path = astar_search.compute_traffic_path_index_consider_past_traffic(ins->starts[agent_id]->index, ins->goals[agent_id]->index);
+      if (path.empty()) {
+        std::cout << "No path found for agent " << agent_id << std::endl;
+        continue; // No path found, skip this agent
+      }
+      traffic_map.add_path(path);
+      revised_path[agent_id] = path;
+      // update the edge weights in the traffic map
+    } 
+    times --;
+  } 
+  guidance_heuristic.set_gudiance_path(revised_path);
+}
 
 void Planner::pre_traffic_optimization(){
 
-
   traffic_map.reset();
-  std::vector<std::vector<uint>> solution_nodes;
+  revised_path.clear();
   for( int i = 0 ; i < N ; i++){
     auto path = astar_search.compute_traffic_path_index(ins->starts[i]->index, ins->goals[i]->index);
-    solution_nodes.push_back(path);
+    traffic_map.add_path(path);
+    revised_path.push_back(path);
   }
-  traffic_map.initialize_traffic_map(solution_nodes);
-  std::vector<std::vector<uint>> revised_path = solution_nodes;
+  // traffic_map.initialize_traffic_map(revised_path);
   std::vector<uint> ordering = std::vector<uint>(N);
   std::iota(ordering.begin(), ordering.end(), 0);
-  std::shuffle(ordering.begin(),ordering.end(), *MT);
+  // std::shuffle(ordering.begin(),ordering.end(), *MT);
   bool stop = false;
   while (!stop){
     for (size_t i = 0; i < ordering.size(); ++i) {
@@ -205,12 +279,62 @@ void Planner::pre_traffic_optimization(){
       revised_path[agent_id] = path;
       // update the edge weights in the traffic map
     } 
-    if(is_expired_time(deadline, 10000)){
+    if(is_expired_time(deadline, 30000)){
       // run optimization for 10 sec;
       stop = true;
       break;
     }
   } 
+  guidance_heuristic.set_gudiance_path(revised_path);
+}
+
+
+void Planner::export_all_revised_paths(const std::vector<std::vector<uint>>& revised_path, const std::string& filename) {
+    std::ofstream fout(filename);
+    fout << "agent_id,time_step,vertex_index\n";
+    for (size_t agent = 0; agent < revised_path.size(); ++agent) {
+        for (size_t t = 0; t < revised_path[agent].size(); ++t) {
+            fout << agent << "," << t << "," << revised_path[agent][t] << "\n";
+        }
+    }
+    fout.close();
+}
+
+
+void Planner::traffic_optimization_tw(HNode* H_curr){
+  traffic_map.reset();
+  revised_path.clear();
+  for( int i = 0 ; i < N ; i++){
+    auto path = astar_search.compute_traffic_path_index(H_curr->C[i]->index, ins->goals[i]->index);
+    revised_path.push_back(path);
+    traffic_map.add_path(path);
+  }
+  std::vector<uint> ordering = std::vector<uint>(N);
+  std::iota(ordering.begin(), ordering.end(), 0);
+  // ordering = H_curr->order;
+  // std::shuffle(ordering.begin(),ordering.end(), *MT);
+  int times = 10; 
+  while (times > 0 ){
+    for (size_t i = 0; i < ordering.size(); ++i) {
+      int agent_id = ordering[i];
+      traffic_map.remove_path(revised_path[agent_id]);
+      auto path = astar_search.compute_traffic_path_index(H_curr->C[agent_id]->index, ins->goals[agent_id]->index);
+      if (path.empty()) {
+        std::cout << "No path found for agent " << agent_id << std::endl;
+        continue; // No path found, skip this agent
+      }
+      traffic_map.add_path(path);
+      revised_path[agent_id] = path;
+      // update the edge weights in the traffic map
+    } 
+    times --;
+  } 
+  // int i = 0;
+  // for(auto p : revised_path){
+  //   std::cout << i << "," << p.size() << std::endl;
+  //   i++;
+  // }
+  // export_all_revised_paths(revised_path,"revised_path.csv");
   guidance_heuristic.set_gudiance_path(revised_path);
 }
 
@@ -237,27 +361,53 @@ void Planner::traffic_optimization(HNode* H_goal){
     traffic_map.initialize_traffic_map(solution_nodes);
     revised_path = solution_nodes;
   }
-  std::vector<uint> ordering = std::vector<uint>(N);
-  std::iota(ordering.begin(), ordering.end(), 0);
-  std::shuffle(ordering.begin(),ordering.end(), *MT);
-  int times = 10; 
-  while (times > 0 ){
+
+    // traffic_map.reset();
+    // revised_path.clear();
+    // for( int i = 0 ; i < N ; i++){
+    //   auto path = astar_search.compute_traffic_path_index(ins->starts[i]->index, ins->goals[i]->index);
+    //   revised_path.push_back(path);
+    //   traffic_map.add_path(path);
+    // }
+
+    std::vector<uint> ordering = std::vector<uint>(N);
+    std::iota(ordering.begin(), ordering.end(), 0);
     // std::shuffle(ordering.begin(),ordering.end(), *MT);
-    for (size_t i = 0; i < ordering.size(); ++i) {
-      int agent_id = ordering[i];
-      traffic_map.remove_path(revised_path[agent_id]);
-      auto path = astar_search.compute_traffic_path_index(ins->starts[agent_id]->index, ins->goals[agent_id]->index);
-      if (path.empty()) {
-        std::cout << "No path found for agent " << agent_id << std::endl;
-        continue; // No path found, skip this agent
-      }
-      traffic_map.add_path(path);
-      revised_path[agent_id] = path;
-      // update the edge weights in the traffic map
+    int times = 10; 
+    while (times > 0 ){
+      // std::shuffle(ordering.begin(),ordering.end(), *MT);
+      for (size_t i = 0; i < ordering.size(); ++i) {
+        int agent_id = ordering[i];
+        traffic_map.remove_path(revised_path[agent_id]);
+        auto path = astar_search.compute_traffic_path_index(ins->starts[agent_id]->index, ins->goals[agent_id]->index);
+        if (path.empty()) {
+          std::cout << "No path found for agent " << agent_id << std::endl;
+          continue; // No path found, skip this agent
+        }
+        traffic_map.add_path(path);
+        revised_path[agent_id] = path;
+        // update the edge weights in the traffic map
+      } 
+      times --;
     } 
-    times --;
-  } 
-  guidance_heuristic.set_gudiance_path(revised_path);
+    guidance_heuristic.set_gudiance_path(revised_path);
+
+  
+}
+
+void Planner::clean_constraint(HNode* H_goal){
+  HNode* current = H_goal;
+  while (current->parent != nullptr) {
+    while (!current->parent->search_tree.empty()) {
+      delete current->parent->search_tree.front();
+      current->parent->search_tree.pop();
+    }
+    current->parent->search_tree.push(new LNode());
+    // current->parent->order_updated = order_updated_times;
+    // // TODO: propagate the order to neighbourhood. 
+    // propagate_order_to_neighbors(current->parent);
+    current = current->parent;
+  }
 }
 
 
@@ -266,6 +416,12 @@ void Planner::select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal){
   while (current->parent != nullptr) {
     current = current->parent;
   }
+
+  // while (!current->search_tree.empty()) {
+  //   delete current->search_tree.front();
+  //   current->search_tree.pop();
+  // }
+  // current->search_tree.push(new LNode());
   OPEN = std::stack<HNode*>();
   OPEN.push(current);
 }
@@ -331,7 +487,7 @@ void Planner::learn_priority_order(HNode* input_H_goal) {
     //     agent_ratio[i] = agent_ratio[i] * (1 + noise_dist(*MT));
     // }
     std::sort(current->parent->order.begin(),current->parent->order.end(), [&](uint i, uint j) {
-        return (agent_ratio[i] ) < (agent_ratio[j]);
+        return (agent_ratio[i] ) > (agent_ratio[j]);
     });
     current->parent->set_priority_and_order(current->parent->order);
     current->parent->reordering(N,D);
@@ -348,24 +504,55 @@ void Planner::learn_priority_order(HNode* input_H_goal) {
   }
 }
 
+
+void Planner::export_solution_from_HNode(HNode* goal, const std::string& filename) {
+    // Backtrack from goal to root, collecting configurations
+    std::vector<Config> solution;
+    HNode* current = goal;
+    while (current != nullptr) {
+        solution.push_back(current->C);
+        current = current->parent;
+    }
+    std::reverse(solution.begin(), solution.end());
+
+    // Export as CSV: agent_id, time_step, vertex_index
+    std::ofstream fout(filename);
+    fout << "agent_id,time_step,vertex_index\n";
+    for (size_t t = 0; t < solution.size(); ++t) {
+        for (size_t agent = 0; agent < solution[t].size(); ++agent) {
+            fout << agent << "," << t << "," << solution[t][agent]->index << "\n";
+        }
+    }
+    fout.close();
+}
+
 void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal, bool is_goal){
   // if(traffic_op == INCRE_TRAFFIC){
   // std::cout<< " increasing "<< std::endl;
 
   // if(is_goal){
   //   learn_priority_order(H_goal);
-  // }
+  // // }
   // std::cout<< "restarting........"<<std::endl;
+  // std::cout<< H_goal->current_make_span<<std::endl;
 
-  // learning_rate = 1;
+  // if(is_goal){
+  //   export_solution_from_HNode(H_goal,"solution_to_" + std::to_string(solution_id)+".csv");
+  //   solution_id ++;
+  // }
+  learning_rate = 0.6;
+  
+  // learn_priority_order(H_goal);
   if(traffic_op == ONLINE_TRAFFIC){
     traffic_optimization(H_goal);
   }else if(traffic_op == INCRE_TRAFFIC){
     incremental_increase_traffic(H_goal);    
   }else if (traffic_op == INCRE_TRAFFIC_WITH_TW){
     incremental_increase_traffic_with_time_window(H_goal);
+  }else if (traffic_op == INCRE_PLUS_ONLINE_TRAFFIC){
+    incremental_increase_traffic_plus_traffic_op(H_goal);
   }
-
+  clean_constraint(H_goal);
   select_restart_node(OPEN,H_goal);
 
 }
@@ -375,6 +562,7 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
 Solution Planner::solve(std::string& additional_info)
 {
   solver_info(1, "start search");
+  checked_path.clear();
   if(traffic_op != NONE){
     order_updated_times = 0;
     best_makespan  = 0;
@@ -399,7 +587,7 @@ Solution Planner::solve(std::string& additional_info)
   std::vector<Config> solution;
   auto C_new = Config(N, nullptr);  // for new configuration
   HNode* H_goal = nullptr;          // to store goal node
-
+  global_goal = H_goal;
   // DFS
   while (!OPEN.empty() && !is_expired(deadline)) {
     loop_cnt += 1;
@@ -432,6 +620,24 @@ Solution Planner::solve(std::string& additional_info)
       }
       continue;
     }
+    if(traffic_op == ONLINE_TRAFFIC_TW){
+      if(H->current_make_span == 0) {
+        // std::cout<<"Running Traffic:" << H->current_make_span <<","<<std::endl;
+        traffic_optimization_tw(H);
+        curr_tw_lower_bound = 0; 
+        curr_tw_upper_bound = curr_tw_lower_bound + tw_size;
+        // std::cout<< "curr_tw_lower_bound" << curr_tw_lower_bound  << "curr_tw_upper_bound" << curr_tw_upper_bound << std::endl;
+      
+      }else if(H->current_make_span < curr_tw_lower_bound || H->current_make_span > curr_tw_upper_bound )
+      {
+        // std::cout<<"Running Traffic" << H->current_make_span <<","<<std::endl;
+        traffic_optimization_tw(H);
+        curr_tw_lower_bound = (int)(H->current_make_span / tw_size) * tw_size;
+        curr_tw_upper_bound =  curr_tw_lower_bound + tw_size;
+        // std::cout<< "curr_tw_lower_bound" << curr_tw_lower_bound  << "curr_tw_upper_bound" << curr_tw_upper_bound << std::endl;
+      
+      }
+    }
     if(traffic_op == INCRE_TRAFFIC_WITH_TW){
       if(guidance_heuristic.initialized != false){
         if(time_bucket_size != 1){
@@ -462,6 +668,9 @@ Solution Planner::solve(std::string& additional_info)
     // check explored list
     const auto iter = EXPLORED.find(C_new);
     if (iter != EXPLORED.end()) {
+      // if(iter->second->h != 0){
+      //   std::cout<< "!!!!!!!!!!!!!!!!" << std::endl; 
+      // }
       // case found
       rewrite(H, iter->second, H_goal, OPEN);
       if(OPEN.size() == 1 ){
@@ -677,7 +886,8 @@ bool Planner::funcPIBT(Agent* ai)
                 guidance_heuristic.get_Astar_heuristic(i, u->id) + tie_breakers[u->id];
               });
     }
-  } else if (traffic_op == ONLINE_TRAFFIC || traffic_op == PRE_TRAFFIC)
+  } else if (traffic_op == ONLINE_TRAFFIC || traffic_op == PRE_TRAFFIC 
+    || traffic_op == ONLINE_TRAFFIC_TW || traffic_op == INCRE_PLUS_ONLINE_TRAFFIC)
   {
     if(!guidance_heuristic.initialized){
       std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
@@ -691,6 +901,11 @@ bool Planner::funcPIBT(Agent* ai)
                 return guidance_heuristic.get_heuristic(i,v->index) + tie_breakers[v->id] <
                 guidance_heuristic.get_heuristic(i,u->index) + tie_breakers[u->id];
               });
+        // std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
+        //       [&](Vertex* const v, Vertex* const u) {
+        //         return guidance_heuristic.get_heuristic(i,v->index) <
+        //         guidance_heuristic.get_heuristic(i,u->index) ;
+        //       });
     }
   }
   else{
@@ -773,6 +988,20 @@ Agent* Planner::swap_possible_and_required(Agent* ai)
 bool Planner::is_swap_required(const uint pusher, const uint puller,
                                Vertex* v_pusher_origin, Vertex* v_puller_origin)
 {
+
+
+  if (traffic_op == INCRE_TRAFFIC || traffic_op == INCRE_TRAFFIC_WITH_TW){
+    if(guidance_heuristic.initialized){
+      return is_swap_required_gudiance_Astar_version(pusher,puller,v_pusher_origin,v_puller_origin);
+    }
+  } else if (traffic_op == ONLINE_TRAFFIC || traffic_op == PRE_TRAFFIC 
+    || traffic_op == ONLINE_TRAFFIC_TW || traffic_op == INCRE_PLUS_ONLINE_TRAFFIC)
+  {
+    if(guidance_heuristic.initialized){
+      return is_swap_required_gudiance_version(pusher,puller,v_pusher_origin,v_puller_origin);
+    }
+  }
+
   auto v_pusher = v_pusher_origin;
   auto v_puller = v_puller_origin;
   Vertex* tmp = nullptr;
@@ -798,6 +1027,70 @@ bool Planner::is_swap_required(const uint pusher, const uint puller,
   return (D.get(puller, v_pusher) < D.get(puller, v_puller)) &&
          (D.get(pusher, v_pusher) == 0 ||
           D.get(pusher, v_puller) < D.get(pusher, v_pusher));
+}
+
+
+// simulate whether the swap is required
+bool Planner::is_swap_required_gudiance_version(const uint pusher, const uint puller,
+                               Vertex* v_pusher_origin, Vertex* v_puller_origin)
+{
+  auto v_pusher = v_pusher_origin;
+  auto v_puller = v_puller_origin;
+  Vertex* tmp = nullptr;
+  while (guidance_heuristic.get_heuristic(pusher, v_puller->index) < guidance_heuristic.get_heuristic(pusher, v_pusher->index)) {
+    auto n = v_puller->neighbor.size();
+    // remove agents who need not to move
+    for (auto u : v_puller->neighbor) {
+      auto a = occupied_now[u->id];
+      if (u == v_pusher ||
+          (u->neighbor.size() == 1 && a != nullptr && ins->goals[a->id] == u)) {
+        --n;
+      } else {
+        tmp = u;
+      }
+    }
+    if (n >= 2) return false;  // able to swap
+    if (n <= 0) break;
+    v_pusher = v_puller;
+    v_puller = tmp;
+  }
+
+  // judge based on distance
+    return (guidance_heuristic.get_heuristic(puller, v_pusher->index) < guidance_heuristic.get_heuristic(puller, v_puller->index)) &&
+         (guidance_heuristic.get_heuristic(pusher, v_pusher->index) == 0 ||
+          guidance_heuristic.get_heuristic(pusher, v_puller->index) < guidance_heuristic.get_heuristic(pusher, v_pusher->index));
+}
+
+
+// simulate whether the swap is required
+bool Planner::is_swap_required_gudiance_Astar_version(const uint pusher, const uint puller,
+                               Vertex* v_pusher_origin, Vertex* v_puller_origin)
+{
+  auto v_pusher = v_pusher_origin;
+  auto v_puller = v_puller_origin;
+  Vertex* tmp = nullptr;
+  while (guidance_heuristic.get_Astar_heuristic(pusher, v_puller->id) < guidance_heuristic.get_Astar_heuristic(pusher, v_pusher->id)) {
+    auto n = v_puller->neighbor.size();
+    // remove agents who need not to move
+    for (auto u : v_puller->neighbor) {
+      auto a = occupied_now[u->id];
+      if (u == v_pusher ||
+          (u->neighbor.size() == 1 && a != nullptr && ins->goals[a->id] == u)) {
+        --n;
+      } else {
+        tmp = u;
+      }
+    }
+    if (n >= 2) return false;  // able to swap
+    if (n <= 0) break;
+    v_pusher = v_puller;
+    v_puller = tmp;
+  }
+
+  // judge based on distance
+    return (guidance_heuristic.get_Astar_heuristic(puller, v_pusher->id) < guidance_heuristic.get_Astar_heuristic(puller, v_puller->id)) &&
+         (guidance_heuristic.get_Astar_heuristic(pusher, v_pusher->id) == 0 ||
+          guidance_heuristic.get_Astar_heuristic(pusher, v_puller->id) < guidance_heuristic.get_Astar_heuristic(pusher, v_pusher->id));
 }
 
 // simulate whether the swap is possible
@@ -843,8 +1136,14 @@ std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic)
     os << "none";
   } else if (traffic == PRE_TRAFFIC) {
     os << "pre-traffic";
+  } else if (traffic == ONLINE_TRAFFIC) {
+    os << "online-traffic";
+  } else if (traffic == ONLINE_TRAFFIC_TW) {
+    os << "online-traffic-with-tw";
   } else if (traffic == INCRE_TRAFFIC) {
     os << "incre-traffic";
+  } else if (traffic == INCRE_TRAFFIC_WITH_TW){
+    os << "incre-traffic-with-tw";
   }
   return os;
 }

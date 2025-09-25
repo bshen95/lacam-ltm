@@ -13,7 +13,7 @@
 #include "guidance_heuristic.hpp"
 // objective function
 enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS };
-enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW};
+enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, ONLINE_TRAFFIC_TW, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW, INCRE_PLUS_ONLINE_TRAFFIC};
 std::ostream& operator<<(std::ostream& os, const Objective objective);
 std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic);
 // PIBT agent
@@ -125,7 +125,7 @@ struct Planner {
   Agents occupied_next;                         // for quick collision checking
 
   uint best_makespan = 0;
-  uint time_bucket_size = 20; // Time bucket size for time-period based traffic maps
+  uint time_bucket_size = 10; // Time bucket size for time-period based traffic maps
   uint current_time_bucket = 0;
   uint max_time_period = 20; // Maximum time period for traffic maps
 
@@ -133,7 +133,17 @@ struct Planner {
   double learning_rate = 0.6;
   // double decay_rate = 0.05; 
 
+  uint curr_tw_lower_bound = 0; 
+  uint curr_tw_upper_bound = 0;
+  uint tw_size = 20;
+
+
+  uint solution_id = 0; 
+  HNode* global_goal;
   std::vector<std::vector<uint>> revised_path;
+  std::vector<std::vector<uint>> checked_path;
+
+
   TrafficMap traffic_map ; // Traffic map for A* search
   std::vector<TrafficMap> time_period_traffic_map; // Time-period based traffic maps for A* search
   ModifiedAstar astar_search; // A* search for traffic path finding
@@ -164,13 +174,25 @@ struct Planner {
   Agent* swap_possible_and_required(Agent* ai);
   bool is_swap_required(const uint pusher, const uint puller,
                         Vertex* v_pusher_origin, Vertex* v_puller_origin);
+
+
+  bool is_swap_required_gudiance_version(const uint pusher, const uint puller,
+                        Vertex* v_pusher_origin, Vertex* v_puller_origin);
+  
+  bool is_swap_required_gudiance_Astar_version(const uint pusher, const uint puller,
+                      Vertex* v_pusher_origin, Vertex* v_puller_origin);
+                      
+
   bool is_swap_possible(Vertex* v_pusher_origin, Vertex* v_puller_origin);
 
+  void clean_constraint(HNode* H_goal);
   // traffic op 
 
   void running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal, bool is_goal);
   void incremental_increase_traffic_with_time_window(HNode* H_goal);
   void incremental_increase_traffic(HNode* H_goal);
+  void incremental_increase_traffic_plus_traffic_op(HNode* H_goal);
+  void traffic_optimization_tw(HNode* H_curr);
   void traffic_optimization(HNode* H_goal);
   void pre_traffic_optimization();
   void select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal);
@@ -179,6 +201,9 @@ struct Planner {
   void get_edge_cost_per_agent(std::vector<double>& agent_cost, 
   const Config& C1, const Config& C2);
   void export_solution_from_HNode(HNode* goal, const std::string& filename);
+  
+  void export_all_revised_paths(const std::vector<std::vector<uint>>& revised_path, const std::string& filename);
+
   // utilities
   template <typename... Body>
   void solver_info(const int level, Body&&... body)

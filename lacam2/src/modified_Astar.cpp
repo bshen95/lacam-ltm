@@ -61,6 +61,7 @@ std::vector<uint> ModifiedAstar::compute_traffic_path_index(uint start_index, ui
 
         if (curr->v->index== end_index) {
             // Path found, reconstruct cost
+            // std::cout<< "path found"<<  node_table[curr->v->index].f << std::endl;
             uint v_index = curr->v->index;
             while (v_index != start_index) {
                 path.push_back(v_index);
@@ -76,8 +77,8 @@ std::vector<uint> ModifiedAstar::compute_traffic_path_index(uint start_index, ui
             if (node_table[n].expanded) continue;
 
             auto [t0, t1] = traffic_map->get_traffic_cost(curr->v->index, n);
-            double tentative_g = curr->g + t0 + t1;
-
+            double tentative_g = curr->g + std::max(1.0, t0 + t1);
+            // double tentative_g = curr->g +1;
             if (!node_table[n].generated) {
                 node_table[n].generated   = true;
                 node_table[n].v           = neighbor;          // or pre-fill v by index in reset()
@@ -101,6 +102,67 @@ std::vector<uint> ModifiedAstar::compute_traffic_path_index(uint start_index, ui
 
 }
 
+
+std::vector<uint> ModifiedAstar::compute_traffic_path_index_consider_past_traffic(uint start_index, uint end_index){
+    reset();
+    Vertex* start_vertex = G->U[start_index];
+    Vertex* target_vertex = G->U[end_index];
+
+    // Initialize start node
+    node_table[start_index].g = 0.0;
+    node_table[start_index].h = manhattan_dist(start_vertex, target_vertex);
+    node_table[start_index].f = node_table[start_index].g + node_table[start_index].h;
+    node_table[start_index].v = start_vertex;
+    OPEN.push(&node_table[start_index]);
+    node_table[start_index].generated = true;
+
+    std::vector<uint> path;
+    while (!OPEN.empty()) {
+        V_Node* curr = OPEN.pop();
+        curr->expanded = true;
+
+        if (curr->v->index== end_index) {
+            // Path found, reconstruct cost
+            uint v_index = curr->v->index;
+            while (v_index != start_index) {
+                path.push_back(v_index);
+                v_index = node_table[v_index].predecessor;
+            }
+            path.push_back(start_index);
+            std::reverse(path.begin(), path.end()); 
+            return path;
+        }
+
+        for (auto* neighbor : curr->v->neighbor) {
+            uint n = neighbor->index;
+            if (node_table[n].expanded) continue;
+
+            auto [t0, t1] = traffic_map->get_traffic_cost(curr->v->index, n);
+            auto t2 = traffic_map->get_incremental_traffic_cost(curr->v->index, n);
+            double tentative_g = curr->g + std::max(1.0, t0 + t1 + t2);
+
+            if (!node_table[n].generated) {
+                node_table[n].generated   = true;
+                node_table[n].v           = neighbor;          // or pre-fill v by index in reset()
+                node_table[n].h           = manhattan_dist(neighbor, target_vertex);
+                node_table[n].g           = tentative_g;
+                node_table[n].predecessor = curr->v->index;
+                node_table[n].f           = tentative_g + node_table[n].h;
+                OPEN.push(&node_table[n]);
+            } else if (tentative_g < node_table[n].g) {
+                node_table[n].g           = tentative_g;
+                node_table[n].predecessor = curr->v->index;
+                node_table[n].f           = tentative_g + node_table[n].h; // reuse h
+                OPEN.decrease_key(&node_table[n]);
+            }
+        }
+
+    }
+    // No path found
+    std::cout << "No path found from " << start_index << " to " << end_index << std::endl;
+    return path;
+
+}
 
 
 int ModifiedAstar::manhattan_dist(const Vertex* v, const Vertex* n){

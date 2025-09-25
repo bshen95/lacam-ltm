@@ -44,7 +44,10 @@ struct V_Node{
     }
 
     double get_tie_breaker() const {
-        return tie_breaker;
+        if(v == nullptr){
+            return rand() % 2 ; 
+        }
+        return v->index;
     }
 
     void update_f(){
@@ -59,6 +62,7 @@ struct cmp_less_f
         if (lhs.get_f() == rhs.get_f()){
                 if (lhs.get_g() == rhs.get_g())
                     return rand() % 2;
+                    // return lhs.get_tie_breaker() < rhs.get_tie_breaker();
                 else
                     return lhs.get_g() > rhs.get_g();
         }

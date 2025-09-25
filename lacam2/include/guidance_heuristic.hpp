@@ -157,7 +157,8 @@ public:
             int cost2goal = 0;
             // iterate path from goal backward; skip j==0 if that's the goal itself (common)
             if (paths[i].empty()) continue;
-            for (size_t j = paths[i].size() - 1; j > 0; --j) {
+            for (size_t j = paths[i].size(); j-- > 0;) {
+                // make sure include the case when path.size = 1, at goal.
                 unsigned int v = paths[i][j];
                 heuristic_table[i][v].cost2goal = cost2goal; // distance to goal along the path from this vertex
                 heuristic_table[i][v].cost2path = 0;         // on the path → zero cost to path
