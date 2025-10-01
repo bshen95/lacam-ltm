@@ -129,13 +129,19 @@ struct Planner {
   uint current_time_bucket = 0;
   uint max_time_period = 20; // Maximum time period for traffic maps
 
+
+  uint incre_time_window_size = 50;
+  uint incre_max_makespan = 0; 
+  uint incre_num_of_time_buckets = 0;
+  uint incre_curr_time_bucket = 0;
+
   uint order_updated_times = 0;
   double learning_rate = 0.6;
   // double decay_rate = 0.05; 
 
   uint curr_tw_lower_bound = 0; 
   uint curr_tw_upper_bound = 0;
-  uint tw_size = 20;
+  uint tw_size = 50;
 
 
   uint solution_id = 0; 

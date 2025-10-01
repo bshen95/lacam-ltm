@@ -114,7 +114,10 @@ public:
                 // the free flow cost is alway one ;
                 double tentative_g = curr->g + 1 + t0;
                 // double tentative_g = curr->g + std::max(1.0, t0);
-
+                // if(std::max(1.0, t0) != 1 + t0){
+                //     std::cout<< " traffic cost "<< std::max(1.0, t0)<< std::endl;
+                //     std::cout<< " traffic cost "<< t0 + 1.0<< std::endl;
+                // }
 
                 // auto [t0, t1] = traffic_map->get_traffic_cost(curr->v->index, neighbor->index);
                 // double tentative_g = curr->g + std::max(1, t0 + t1);

@@ -22,13 +22,14 @@ struct TrafficMap {
     // traffic map takes vertex->index as input !
     std::vector<double> incremental_flow;
     std::vector<bool> visited;
-
+    std::vector<double> normalized_incremental_flow;
 
 
     TrafficMap(const Graph* _G) : G(_G) , width(_G->width), height(_G->width) {
       // int total_edges = (width - 1) * height + width * (height - 1);
       // edge_flow.resize(total_edges, 0.0);
       incremental_flow.resize(width * height * 4, 1);
+      normalized_incremental_flow.resize(width * height * 4, 1);
       edge_flow.resize(width * height * 4, 0);
       vertex_flow.resize(width * height, 0);
       visited.resize(G->U.size(), false);
@@ -91,7 +92,8 @@ struct TrafficMap {
     double get_incremental_traffic_cost(uint a, uint b) const {
       if(a == b) return 0;
       int edge_idx = edge_index(a, b);
-      return incremental_flow[edge_idx];
+      // return incremental_flow[edge_idx];
+      return 10*normalized_incremental_flow[edge_idx];
     }
 
 
@@ -100,14 +102,17 @@ struct TrafficMap {
       // if(a == b) return {0, 0}; // No cost if the same vertex
       int edge_idx = edge_index(a, b);
       int edge_idx2 = edge_index(b, a);
-      return { ( edge_flow[edge_idx] + 1) * edge_flow[edge_idx2], (vertex_flow[b]) / 2 };
+      // return { std::sqrt(( edge_flow[edge_idx] + 1) * edge_flow[edge_idx2]), (vertex_flow[b]) / 2 };
       //  return { edge_flow[edge_idx] ,  (vertex_flow[b])/2};
+      // return { edge_flow[edge_idx],  (vertex_flow[b])/2};
+      return { edge_flow[edge_idx] ,  (vertex_flow[b])/2};
     }
 
     void reset() {
       std::fill(vertex_flow.begin(), vertex_flow.end(), 0);
       std::fill(edge_flow.begin(), edge_flow.end(), 0);
       std::fill(visited.begin(), visited.end(), false);
+      std::fill(normalized_incremental_flow.begin(), normalized_incremental_flow.end(), 1);
     }
     
     void remove_path(const std::vector<uint>& path) {
@@ -153,7 +158,6 @@ struct TrafficMap {
       if( path.size() <= start_time_index){
         return;
       }
-      // remove path from traffic map
       for (size_t i = start_time_index; i < path.size() - 1; ++i) {
         visited[path[i]] = true;
         visited[path[i+1]] = true;
@@ -168,10 +172,6 @@ struct TrafficMap {
 
 
     void record_incremental_flow(){
-      for (size_t i = 0; i < incremental_flow.size(); ++i) {
-        incremental_flow[i] = incremental_flow[i] * 0.9; // reset to 1
-      }
-
       std::unordered_set<std::pair<int,int>, EdgePairHash> visited_edge;
       for(size_t i = 0; i < visited.size(); ++i) {
         if(visited[i]) {
@@ -203,13 +203,23 @@ struct TrafficMap {
           }
         }
       }
-      for(auto edge : visited_edge){
+      for(auto& edge : visited_edge){
         if( edge.first == edge.second) continue;
         int edge_idx = edge_index(edge.first, edge.second);
         auto [t1, t2] = get_traffic_cost(edge.first, edge.second);
         // incremental_flow[edge_idx] += learning_rate*(t1 + t2 );
         incremental_flow[edge_idx] +=  learning_rate*(t1 + t2 );
         // incremental_flow[edge_idx] += (t1 + t2);
+      }
+
+      double max_val = 0.0;
+      for (double val : incremental_flow) {
+          if (val > max_val) max_val = val;
+      }
+      if (max_val > 0) {
+        for(int i = 0; i < normalized_incremental_flow.size(); ++i){
+          normalized_incremental_flow[i] = incremental_flow[i] / max_val;
+        }
       }
     }
 

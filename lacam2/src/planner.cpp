@@ -83,7 +83,7 @@ Planner::Planner(const Instance* _ins, const Deadline* _deadline,
       occupied_now(V_size, nullptr),
       occupied_next(V_size, nullptr),
       traffic_map(&ins->G),
-      time_period_traffic_map(time_bucket_size, TrafficMap(&ins->G)),
+      time_period_traffic_map(incre_num_of_time_buckets, TrafficMap(&ins->G)),
       astar_search(&traffic_map, &ins->G),
       guidance_heuristic( &ins->G, &traffic_map, N)
 {
@@ -124,9 +124,6 @@ void Planner::incremental_increase_traffic(HNode* H_goal){
 
 void Planner::incremental_increase_traffic_with_time_window(HNode* H_goal){
   guidance_heuristic.initialized = true;
-  for(uint t = 0; t < time_bucket_size; t++){
-    time_period_traffic_map[t].reset();
-  }
   int solution_makespan =  H_goal->current_make_span +1 ;
   HNode* current = H_goal;
   std::vector<std::vector<uint>> solution_nodes = std::vector<std::vector<uint>>(N);
@@ -135,43 +132,74 @@ void Planner::incremental_increase_traffic_with_time_window(HNode* H_goal){
   }
   while (current->parent != nullptr) {
     for(uint i = 0; i < N; ++i) {
-      // if(solution_nodes[i].size() == 1 
-      // && current->C[i]->index == H_goal->C[i]->index){
-      //   continue; // skip if already at goal
-      // }
       solution_nodes[i].push_back(current->C[i]->index);
     }
     current = current->parent;
   }
+
+
   for (uint i = 0; i < N; ++i) {
     solution_nodes[i].push_back(ins->starts[i]->index);
     std::reverse(solution_nodes[i].begin(), solution_nodes[i].end());
   }
-  if(best_makespan == 0){
-    best_makespan = solution_makespan * 2;
-    // max_time_period = best_makespan/time_bucket_size;
-    // max_time_period = static_cast<int>(std::ceil(static_cast<double>(best_makespan) / time_bucket_size));
-    max_time_period = static_cast<int>(std::ceil(static_cast<double>(best_makespan) / time_bucket_size)); 
-    if(max_time_period < 1){
-      max_time_period = 1;
-    }
-    // std::cout<<"Initial max time period: " << best_makespan << std::endl;
-  }
 
-  for(auto solution : solution_nodes){
-    for(uint t = 0; t < time_bucket_size; t++){
-      uint start_index = t * max_time_period;
-      time_period_traffic_map[t].add_incremental_flow_path_from_time_index(solution,  start_index);
+  if(incre_max_makespan == 0){
+    incre_max_makespan = solution_makespan * 2;
+    incre_num_of_time_buckets = static_cast<int>(std::ceil(static_cast<double>(incre_max_makespan) / static_cast<double>(incre_time_window_size)));
+    if(incre_num_of_time_buckets < 1){
+      std::cout<<"Error: incre_num_of_time_buckets < 1"<<std::endl;
     }
+    time_period_traffic_map.resize(incre_num_of_time_buckets , TrafficMap(&ins->G));
   }
-  for(uint t = 0; t < time_bucket_size; t++){
+  for(uint t = 0; t < incre_num_of_time_buckets; t++){
+    time_period_traffic_map[t].reset();
+    for(auto& solution : solution_nodes){
+        uint start_index = t * incre_time_window_size;
+        time_period_traffic_map[t].add_incremental_flow_path_from_time_index(solution,  start_index);
+    }
     time_period_traffic_map[t].record_incremental_flow(learning_rate);
   }
   
-  current_time_bucket = 0;
+  
+  incre_curr_time_bucket = 0;
   // traffic_map.print_incremental_flow("incremental_flow.csv");
   guidance_heuristic.reset(ins);
-  guidance_heuristic.set_traffic_map(&time_period_traffic_map[current_time_bucket]);
+  guidance_heuristic.set_traffic_map(&time_period_traffic_map[incre_curr_time_bucket]);
+
+// uint incre_time_window_size = 40;
+//   uint incre_max_makespan = 0; 
+//   uint incre_num_of_time_buckets = 0;
+//   uint incre_curr_time_bucket = 0;
+
+
+  // if(best_makespan == 0){
+  //   best_makespan = solution_makespan * 2;
+  //   // max_time_period = best_makespan/time_bucket_size;
+  //   // max_time_period = static_cast<int>(std::ceil(static_cast<double>(best_makespan) / time_bucket_size));
+  //   max_time_period = static_cast<int>(std::ceil(static_cast<double>(best_makespan) / time_bucket_size)); 
+  //   if(max_time_period < 1){
+  //     max_time_period = 1;
+  //   }
+  //   // std::cout<<"Initial max time period: " << best_makespan << std::endl;
+  // }
+  // for(uint t = 0; t < time_bucket_size; t++){
+  //   time_period_traffic_map[t].reset();
+  // }
+
+  // for(auto solution : solution_nodes){
+  //   for(uint t = 0; t < time_bucket_size; t++){
+  //     uint start_index = t * max_time_period;
+  //     time_period_traffic_map[t].add_incremental_flow_path_from_time_index(solution,  start_index);
+  //   }
+  // }
+  // for(uint t = 0; t < time_bucket_size; t++){
+  //   time_period_traffic_map[t].record_incremental_flow(learning_rate);
+  // }
+  
+  // current_time_bucket = 0;
+  // // traffic_map.print_incremental_flow("incremental_flow.csv");
+  // guidance_heuristic.reset(ins);
+  // guidance_heuristic.set_traffic_map(&time_period_traffic_map[current_time_bucket]);
   // std::cout<<"finishing increasing traffic map" << std::endl;
 }
 
@@ -533,7 +561,7 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
 
   // if(is_goal){
   //   learn_priority_order(H_goal);
-  // // }
+  // }
   // std::cout<< "restarting........"<<std::endl;
   // std::cout<< H_goal->current_make_span<<std::endl;
 
@@ -546,7 +574,7 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
   // }else{
   //     learning_rate = 1.2;
   // }
-  learning_rate = 1;
+  learning_rate = 0.6;
   // learn_priority_order(H_goal);
   if(traffic_op == ONLINE_TRAFFIC){
     traffic_optimization(H_goal);
@@ -570,7 +598,9 @@ Solution Planner::solve(std::string& additional_info)
   checked_path.clear();
   if(traffic_op != NONE){
     order_updated_times = 0;
-    best_makespan  = 0;
+    incre_max_makespan  = 0;
+    incre_num_of_time_buckets = 0;
+    incre_curr_time_bucket = 0;
     guidance_heuristic.initialized = false;
     guidance_heuristic.setup(ins);
     if(traffic_op == PRE_TRAFFIC){
@@ -645,15 +675,14 @@ Solution Planner::solve(std::string& additional_info)
     }
     if(traffic_op == INCRE_TRAFFIC_WITH_TW){
       if(guidance_heuristic.initialized != false){
-        if(time_bucket_size != 1){
-          uint traffic_index = H->current_make_span  / max_time_period  ;
-          if( traffic_index != current_time_bucket){
+        uint start_index = static_cast<int>(std::floor(static_cast<double>(H->current_make_span) / static_cast<double>(incre_time_window_size)));
+        // std::cout<< "Current time step: " << H->current_make_span << ", time bucket: " << start_index << std::endl;
+        if( start_index != incre_curr_time_bucket){
             // set traffic based on time period;
-            current_time_bucket = traffic_index;
-            guidance_heuristic.set_traffic_map(&time_period_traffic_map[current_time_bucket]);
+            incre_curr_time_bucket = start_index;
+            guidance_heuristic.set_traffic_map(&time_period_traffic_map[incre_curr_time_bucket]);
             guidance_heuristic.reset(ins);
             // std::cout<< "Updating traffic map to time bucket: " << current_time_bucket << std::endl;
-          }
         }
       }
     }
