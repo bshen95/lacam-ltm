@@ -574,7 +574,7 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
   // }else{
   //     learning_rate = 1.2;
   // }
-  learning_rate = 0.6;
+  learning_rate = 1.0;
   // learn_priority_order(H_goal);
   if(traffic_op == ONLINE_TRAFFIC){
     traffic_optimization(H_goal);
@@ -594,6 +594,7 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
 
 Solution Planner::solve(std::string& additional_info)
 {
+  // std::cout<<objective<<","<<traffic_op<<std::endl;
   solver_info(1, "start search");
   checked_path.clear();
   if(traffic_op != NONE){

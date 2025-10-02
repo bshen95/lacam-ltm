@@ -96,7 +96,17 @@ struct TrafficMap {
       return 10*normalized_incremental_flow[edge_idx];
     }
 
-
+    std::tuple<double,double> get_traffic_cost_contra_flow_version(uint a, uint b) const {
+      if(a == b) return {0, 0};
+      // if(a == b) return {0, 0}; // No cost if the same vertex
+      int edge_idx = edge_index(a, b);
+      int edge_idx2 = edge_index(b, a);
+      // return { std::sqrt(( edge_flow[edge_idx] + 1) * edge_flow[edge_idx2]), (vertex_flow[b]) / 2 };
+      //  return { edge_flow[edge_idx] ,  (vertex_flow[b])/2};
+      // return { edge_flow[edge_idx],  (vertex_flow[b])/2};
+      return { (edge_flow[edge_idx] + 1) * (edge_flow[edge_idx2]) ,  (vertex_flow[b])/2};
+    }
+    
     std::tuple<double,double> get_traffic_cost(uint a, uint b) const {
       if(a == b) return {0, 0};
       // if(a == b) return {0, 0}; // No cost if the same vertex

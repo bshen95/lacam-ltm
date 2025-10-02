@@ -12,7 +12,7 @@
 #include "traffic_map.hpp"
 #include "guidance_heuristic.hpp"
 // objective function
-enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS };
+enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS};
 enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, ONLINE_TRAFFIC_TW, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW, INCRE_PLUS_ONLINE_TRAFFIC};
 std::ostream& operator<<(std::ostream& os, const Objective objective);
 std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic);
@@ -210,6 +210,7 @@ struct Planner {
   
   void export_all_revised_paths(const std::vector<std::vector<uint>>& revised_path, const std::string& filename);
 
+  void backtrack_compute_sum_of_costs(HNode* H_goal);
   // utilities
   template <typename... Body>
   void solver_info(const int level, Body&&... body)

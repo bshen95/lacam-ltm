@@ -76,7 +76,7 @@ std::vector<uint> ModifiedAstar::compute_traffic_path_index(uint start_index, ui
             uint n = neighbor->index;
             if (node_table[n].expanded) continue;
 
-            auto [t0, t1] = traffic_map->get_traffic_cost(curr->v->index, n);
+            auto [t0, t1] = traffic_map->get_traffic_cost_contra_flow_version(curr->v->index, n);
             // the free flow cost is alway one ;
             double tentative_g = curr->g + 1 + t0 + t1;
             // double tentative_g = curr->g + std::max(1.0,t0 + t1);
@@ -139,8 +139,9 @@ std::vector<uint> ModifiedAstar::compute_traffic_path_index_consider_past_traffi
             uint n = neighbor->index;
             if (node_table[n].expanded) continue;
 
-            auto [t0, t1] = traffic_map->get_traffic_cost(curr->v->index, n);
+            auto [t0, t1] = traffic_map->get_traffic_cost_contra_flow_version(curr->v->index, n);
             auto t2 = traffic_map->get_incremental_traffic_cost(curr->v->index, n);
+            // auto t2 = traffic_map->get_incremental_traffic_cost(curr->v->index, n);
             // the free flow cost is alway one ;
             double tentative_g = curr->g + 1 + t0 + t1 + t2;
 
