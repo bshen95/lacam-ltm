@@ -100,18 +100,17 @@ void Planner::incremental_increase_traffic(HNode* H_goal){
   for (uint i = 0; i < N; ++i) {
     solution_nodes[i].push_back(H_goal->C[i]->index);
   }
-  while (current->parent != nullptr) {
+  while (current != restart_node->parent) {
     for(uint i = 0; i < N; ++i) {
-      // if(solution_nodes[i].size() == 1 
-      // && current->C[i]->index == H_goal->C[i]->index){
-      //   continue; // skip if already at goal
-      // }
+      if(solution_nodes[i].size() == 1 
+        && current->C[i]->index == H_goal->C[i]->index){
+          continue; // skip if already at goal
+      }
       solution_nodes[i].push_back(current->C[i]->index);
     }
     current = current->parent;
   }
   for (uint i = 0; i < N; ++i) {
-    solution_nodes[i].push_back(ins->starts[i]->index);
     std::reverse(solution_nodes[i].begin(), solution_nodes[i].end());
   }
   for(auto solution : solution_nodes){
@@ -130,18 +129,33 @@ void Planner::incremental_increase_traffic_with_time_window(HNode* H_goal){
   for (uint i = 0; i < N; ++i) {
     solution_nodes[i].push_back(H_goal->C[i]->index);
   }
-  while (current->parent != nullptr) {
+  while (current != restart_node->parent) {
     for(uint i = 0; i < N; ++i) {
+      if(solution_nodes[i].size() == 1 
+        && current->C[i]->index == H_goal->C[i]->index){
+          continue; // skip if already at goal
+      }
       solution_nodes[i].push_back(current->C[i]->index);
     }
     current = current->parent;
   }
-
-
   for (uint i = 0; i < N; ++i) {
-    solution_nodes[i].push_back(ins->starts[i]->index);
     std::reverse(solution_nodes[i].begin(), solution_nodes[i].end());
   }
+
+  // while (current != restart_node) {
+  //   current = current->parent;
+  //   for(uint i = 0; i < N; ++i) {
+  //     solution_nodes[i].push_back(current->C[i]->index);
+  //   }
+  // }
+
+  // for (uint i = 0; i < N; ++i) {
+  //   if(solution_nodes[i].back() != ins->starts[i]->index){
+  //     std::cout<<"Error: solution path does not reach the restart node"<<std::endl;
+  //   }
+  //   std::reverse(solution_nodes[i].begin(), solution_nodes[i].end());
+  // }
 
   if(incre_max_makespan == 0){
     incre_max_makespan = solution_makespan * 2;
@@ -440,11 +454,17 @@ void Planner::clean_constraint(HNode* H_goal){
 
 
 void Planner::select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal){
+  // std::cout<< "Selecting restart node..." << std::endl;
+  uint curr_make_span = curr_goal_node->current_make_span;
+  // std::cout<< "Current makespan: " << curr_make_span << std::endl;
+  uint backtrack =  get_random_int(MT, 0, curr_make_span);
+  // uint backtrack = 150;
+  // std::cout << "Restart from backtrack: " << backtrack << std::endl;
   HNode* current = H_goal;
-  while (current->parent != nullptr) {
+  while (current->parent != nullptr || backtrack < 0) {
+    backtrack--;
     current = current->parent;
   }
-
   while (!current->search_tree.empty()) {
     delete current->search_tree.front();
     current->search_tree.pop();
@@ -567,6 +587,7 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
 
   // if(is_goal){
   //   export_solution_from_HNode(H_goal,"solution_to_" + std::to_string(solution_id)+".csv");
+  //   traffic_map.print_normalized_incremental_flow("incremental_flow_to_" + std::to_string(solution_id)+".csv");
   //   solution_id ++;
   // }
   // if(is_goal){
@@ -574,6 +595,15 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
   // }else{
   //     learning_rate = 1.2;
   // }
+  if(is_goal){
+    curr_goal_node = H_goal;
+    HNode* current = H_goal;
+    while (current->parent != nullptr) {
+      soultion_node_pool.push_back(current);
+      current = current->parent;
+    }
+  }
+  
   learning_rate = 1.0;
   // learn_priority_order(H_goal);
   if(traffic_op == ONLINE_TRAFFIC){
@@ -585,7 +615,7 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
   }else if (traffic_op == INCRE_PLUS_ONLINE_TRAFFIC){
     incremental_increase_traffic_plus_traffic_op(H_goal);
   }
-  // clean_constraint(H_goal);
+  clean_constraint(H_goal);
   select_restart_node(OPEN,H_goal);
 
 }
@@ -596,6 +626,8 @@ Solution Planner::solve(std::string& additional_info)
 {
   // std::cout<<objective<<","<<traffic_op<<std::endl;
   solver_info(1, "start search");
+  soultion_node_pool = std::vector<HNode*>();
+  num_of_nodes_generated = 0;
   checked_path.clear();
   if(traffic_op != NONE){
     order_updated_times = 0;
@@ -617,14 +649,22 @@ Solution Planner::solve(std::string& additional_info)
   // insert initial node, 'H': high-level node
   auto H_init = new HNode(ins->starts, D, nullptr, 0, get_h_value(ins->starts));
   H_init->set_make_span(0);
+  num_of_nodes_generated = 1; 
+  H_init->node_id = num_of_nodes_generated;
+  num_of_nodes_generated ++;
   OPEN.push(H_init);
   EXPLORED[H_init->C] = H_init;
 
+  restart_node = H_init;
   std::vector<Config> solution;
   auto C_new = Config(N, nullptr);  // for new configuration
   HNode* H_goal = nullptr;          // to store goal node
   global_goal = H_goal;
   // DFS
+  if(verbose == -1){
+    std::cout<< "version: 1.4.0\n";
+    std::cout<< "events:\n";
+  }
   while (!OPEN.empty() && !is_expired(deadline)) {
     loop_cnt += 1;
 
@@ -650,6 +690,14 @@ Solution Planner::solve(std::string& additional_info)
     if (H_goal == nullptr && is_same_config(H->C, ins->goals)) {
       H_goal = H;
       solver_info(1, "found solution, cost: ", H->g);
+      if(verbose == -1){
+        std::cout<< " - type: expanding" <<std::endl;
+        std::cout<< "   id: "<< H->node_id <<std::endl;
+        std::cout<< "   pId: " 
+              << (H->parent == nullptr ? "0" : std::to_string(H->parent->node_id)) <<std::endl;
+        std::cout<< "   f_value: "<< H->f<<std::endl;
+      }
+      
       if (objective == OBJ_NONE) break;
       if(traffic_op != NONE && traffic_op != PRE_TRAFFIC){
         running_traffic_optimization(OPEN, H_goal, true);
@@ -686,6 +734,14 @@ Solution Planner::solve(std::string& additional_info)
             // std::cout<< "Updating traffic map to time bucket: " << current_time_bucket << std::endl;
         }
       }
+    }
+    
+    if(verbose == -1){
+      std::cout<< " - type: expanding" <<std::endl;
+      std::cout<< "   id: "<< H->node_id <<std::endl;
+      std::cout<< "   pId: " 
+            << (H->parent == nullptr ? "0" : std::to_string(H->parent->node_id)) <<std::endl;
+      std::cout<< "   f_value: "<< H->f<<std::endl;
     }
     // create successors at the low-level search
     auto L = H->search_tree.front();
@@ -725,11 +781,20 @@ Solution Planner::solve(std::string& additional_info)
       const auto H_new = new HNode(
           C_new, D, H, H->g + get_edge_cost(H->C, C_new), get_h_value(C_new));
       H_new->set_make_span(H->current_make_span + 1);
+      H_new->node_id = num_of_nodes_generated;
       EXPLORED[H_new->C] = H_new;
       if(traffic_op == NONE || traffic_op == PRE_TRAFFIC){
         if (H_goal == nullptr || H_new->f < H_goal->f) OPEN.push(H_new);
       }else{
         OPEN.push(H_new);
+      }
+      num_of_nodes_generated ++;
+      if(verbose == -1){
+        std::cout<< " - type: generating" <<std::endl;
+        std::cout<< "   id: "<< H_new->node_id <<std::endl;
+        std::cout<< "   pId: " 
+              << (H_new->parent == nullptr ? "0" : std::to_string(H_new->parent->node_id)) <<std::endl;
+        std::cout<< "   f_value: "<< H_new->f<<std::endl;
       }
     }
   }
@@ -783,12 +848,20 @@ void Planner::rewrite(HNode* H_from, HNode* H_to, HNode* H_goal,
     for (auto n_to : n_from->neighbor) {
       auto g_val = n_from->g + get_edge_cost(n_from->C, n_to->C);
       if (g_val < n_to->g) {
+        if(verbose == -1){
+          std::cout<< " - type: rewriting" <<std::endl;
+          std::cout<< "   id: "<< n_to->node_id <<std::endl;
+          std::cout<< "   pId: " 
+                << std::to_string(n_from->node_id) <<std::endl;
+          std::cout<< "   f_value: "<< n_to->f<<std::endl;
+        }
         if (n_to == H_goal){
           if(traffic_op != NONE && traffic_op != PRE_TRAFFIC){
             solver_info(1, "cost update: ", n_to->g, " -> ", g_val);
             n_to->g = g_val;
             n_to->f = n_to->g + n_to->h;
             n_to->parent = n_from;
+            n_to->set_make_span(n_from->current_make_span + 1);
             running_traffic_optimization(OPEN, n_to, true);
             return;
           }else{
@@ -798,6 +871,7 @@ void Planner::rewrite(HNode* H_from, HNode* H_to, HNode* H_goal,
         n_to->g = g_val;
         n_to->f = n_to->g + n_to->h;
         n_to->parent = n_from;
+        n_to->set_make_span(n_from->current_make_span + 1);
         Q.push(n_to);
         if (H_goal != nullptr && n_to->f < H_goal->f) OPEN.push(n_to);
       }

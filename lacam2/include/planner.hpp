@@ -49,6 +49,7 @@ struct HNode {
   uint f;        // g + h (might be updated)
   uint current_make_span = 0;
   uint order_updated = 0;
+  uint node_id = 0;
   // for low-level search
   std::vector<float> priorities;
   std::vector<uint> order;
@@ -143,12 +144,15 @@ struct Planner {
   uint curr_tw_upper_bound = 0;
   uint tw_size = 50;
 
-
+  uint num_of_nodes_generated = 0;
   uint solution_id = 0; 
   HNode* global_goal;
   std::vector<std::vector<uint>> revised_path;
   std::vector<std::vector<uint>> checked_path;
 
+  HNode* restart_node; 
+  HNode* curr_goal_node; 
+  std::vector<HNode*> soultion_node_pool;
 
   TrafficMap traffic_map ; // Traffic map for A* search
   std::vector<TrafficMap> time_period_traffic_map; // Time-period based traffic maps for A* search

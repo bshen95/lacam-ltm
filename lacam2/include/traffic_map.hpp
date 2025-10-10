@@ -24,12 +24,15 @@ struct TrafficMap {
     std::vector<bool> visited;
     std::vector<double> normalized_incremental_flow;
 
+    int scaling_factor = 10;
+    int scaling_min = 0;
+    int scaling_max = 100;
 
     TrafficMap(const Graph* _G) : G(_G) , width(_G->width), height(_G->width) {
       // int total_edges = (width - 1) * height + width * (height - 1);
       // edge_flow.resize(total_edges, 0.0);
       incremental_flow.resize(width * height * 4, 1);
-      normalized_incremental_flow.resize(width * height * 4, 1);
+      normalized_incremental_flow.resize(width * height * 4, 0);
       edge_flow.resize(width * height * 4, 0);
       vertex_flow.resize(width * height, 0);
       visited.resize(G->U.size(), false);
@@ -93,7 +96,7 @@ struct TrafficMap {
       if(a == b) return 0;
       int edge_idx = edge_index(a, b);
       // return incremental_flow[edge_idx];
-      return 10*normalized_incremental_flow[edge_idx];
+      return scaling_factor*normalized_incremental_flow[edge_idx];
     }
 
     std::tuple<double,double> get_traffic_cost_contra_flow_version(uint a, uint b) const {
@@ -115,14 +118,14 @@ struct TrafficMap {
       // return { std::sqrt(( edge_flow[edge_idx] + 1) * edge_flow[edge_idx2]), (vertex_flow[b]) / 2 };
       //  return { edge_flow[edge_idx] ,  (vertex_flow[b])/2};
       // return { edge_flow[edge_idx],  (vertex_flow[b])/2};
-      return { edge_flow[edge_idx] ,  (vertex_flow[b])/2};
+      return { edge_flow[edge_idx],  (vertex_flow[b])/2};
     }
 
     void reset() {
       std::fill(vertex_flow.begin(), vertex_flow.end(), 0);
       std::fill(edge_flow.begin(), edge_flow.end(), 0);
       std::fill(visited.begin(), visited.end(), false);
-      std::fill(normalized_incremental_flow.begin(), normalized_incremental_flow.end(), 1);
+      std::fill(normalized_incremental_flow.begin(), normalized_incremental_flow.end(), 0);
     }
     
     void remove_path(const std::vector<uint>& path) {
@@ -253,6 +256,22 @@ struct TrafficMap {
           int edge_idx = edge_index(i, neighbor_index);
           vout << i << "," << neighbor_index << "," 
               << incremental_flow[edge_idx]<<"\n";
+        }
+      }
+      vout.close();
+    }
+
+
+    void print_normalized_incremental_flow(const std::string& flow_filename) {
+      std::ofstream vout(flow_filename);
+      vout << "vertex_in,vertex_out,edge_flow\n";
+      for (size_t i = 0; i < G->U.size(); ++i) {
+        if(G->U[i] == nullptr) continue; // skip if vertex is null
+        for(const auto& neighbor : G->U[i]->neighbor) {
+          uint neighbor_index = neighbor->index;
+          int edge_idx = edge_index(i, neighbor_index);
+          vout << i << "," << neighbor_index << "," 
+              << scaling_factor * normalized_incremental_flow[edge_idx]<<"\n";
         }
       }
       vout.close();
