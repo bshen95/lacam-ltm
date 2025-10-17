@@ -46,7 +46,7 @@ public:
     }
 
 
-    int manhattan_dist(const Vertex* v, const Vertex* n){
+    double manhattan_dist(const Vertex* v, const Vertex* n){
         return std::abs(static_cast<int>(v->index / W_width - n->index / W_width)) + 
                 std::abs(static_cast<int>(v->index % W_width - n->index % W_width));
     }
@@ -110,6 +110,7 @@ public:
             for (auto* neighbor : curr->v->neighbor) {
                 uint n = neighbor->id;
                 if (V_Node_table[i][n].expanded) continue;
+                // auto t0 = traffic_map->get_incremental_traffic_cost(curr->v->index, neighbor->index);
                 auto t0 = traffic_map->get_incremental_traffic_cost(curr->v->index, neighbor->index);
                 // the free flow cost is alway one ;
                 double tentative_g = curr->g + 1 + t0;
@@ -147,6 +148,60 @@ public:
     }
 
 
+    double get_regret_heuristic(uint i, uint v_id)
+    {
+        // agent i and v_id ...
+        if (V_Node_table[i][v_id].expanded){
+            return V_Node_table[i][v_id].g;
+        } 
+        // std::cout <<" HHHHH I am here "<< std::endl;
+        while (!OPEN[i].empty()) {
+            auto & current_queue = OPEN[i];
+            V_Node* curr = OPEN[i].pop();
+            curr->expanded = true;
+            for (auto* neighbor : curr->v->neighbor) {
+                uint n = neighbor->id;
+                if (V_Node_table[i][n].expanded) continue;
+                // auto t0 = traffic_map->get_incremental_traffic_cost(curr->v->index, neighbor->index);
+                // directed graph get incoming edges. 
+                // auto t0 = traffic_map->get_regret_cost( curr->v->index,neighbor->index);
+                auto t0 = traffic_map->get_regret_cost( neighbor->index,curr->v->index);
+                // auto t0 = traffic_map->get_regret_cost(curr->v->index, neighbor->index);
+                // auto t0 = traffic_map->get_incremental_traffic_cost(curr->v->index, neighbor->index);
+                // the free flow cost is alway one ;
+                double tentative_g = curr->g + 1 + t0;
+                // double tentative_g = curr->g + std::max(1.0, t0);
+                // if(std::max(1.0, t0) != 1 + t0){
+                //     std::cout<< " traffic cost "<< std::max(1.0, t0)<< std::endl;
+                //     std::cout<< " traffic cost "<< t0 + 1.0<< std::endl;
+                // }
+
+                // auto [t0, t1] = traffic_map->get_traffic_cost(curr->v->index, neighbor->index);
+                // double tentative_g = curr->g + std::max(1, t0 + t1);
+                
+                double h = manhattan_dist(neighbor, starts[i]);
+                if (!V_Node_table[i][neighbor->id].generated) {
+                    V_Node_table[i][neighbor->id].generated   = true;
+                    V_Node_table[i][neighbor->id].g           = tentative_g;
+                    V_Node_table[i][neighbor->id].h           = h;
+                    V_Node_table[i][neighbor->id].f           = tentative_g + h;
+                    OPEN[i].push(&V_Node_table[i][neighbor->id]);
+                } else if (tentative_g < V_Node_table[i][neighbor->id].g) {
+                    V_Node_table[i][neighbor->id].g           = tentative_g;
+                    V_Node_table[i][neighbor->id].h           = h;
+                    V_Node_table[i][neighbor->id].f           = tentative_g + h; 
+                    OPEN[i].decrease_key(&V_Node_table[i][neighbor->id]);
+                }
+            }
+            if (curr->v->id == v_id){
+                // std::cout <<" Found heuristic for agent "<< i << " at vertex "<< v_id << " with cost "<< curr->g << std::endl;
+                return curr->g;
+            }
+        }
+        // No path found
+        std::cout << "No validate start and target found "<< std::endl;
+        return V_size;
+    }
 
     void set_gudiance_path(const std::vector<std::vector<uint>>& paths) {
         initialized = true;

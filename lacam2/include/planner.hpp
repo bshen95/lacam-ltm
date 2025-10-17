@@ -13,7 +13,7 @@
 #include "guidance_heuristic.hpp"
 // objective function
 enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS};
-enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, ONLINE_TRAFFIC_TW, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW, INCRE_PLUS_ONLINE_TRAFFIC};
+enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, ONLINE_TRAFFIC_TW, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW, INCRE_PLUS_ONLINE_TRAFFIC, REGERT_TRAFFIC};
 std::ostream& operator<<(std::ostream& os, const Objective objective);
 std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic);
 // PIBT agent
@@ -74,10 +74,9 @@ struct HNode {
   }
 
   void reordering_based_on_traffic(size_t N, GuidanceHeuristic& G){
-    if (parent == nullptr) {
       // initialize
-      for (uint i = 0; i < N; ++i) priorities[i] = (float)G.get_Astar_heuristic(i, C[i]->id) / N;
-    } 
+      // for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_Astar_heuristic(i, C[i]->id)/ (N) ;
+    for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_regret_heuristic(i, C[i]->id) / N;
     // set order
     std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(),
@@ -147,6 +146,9 @@ struct Planner {
   uint num_of_nodes_generated = 0;
   uint solution_id = 0; 
   HNode* global_goal;
+  std::vector<uint> accessed_agents; // for quick reset of traffic map
+  uint accessed_times;
+
   std::vector<std::vector<uint>> revised_path;
   std::vector<std::vector<uint>> checked_path;
 
@@ -192,13 +194,17 @@ struct Planner {
   bool is_swap_required_gudiance_Astar_version(const uint pusher, const uint puller,
                       Vertex* v_pusher_origin, Vertex* v_puller_origin);
                       
-
+  bool is_swap_required_gudiance_regret_version(const uint pusher, const uint puller,
+                        Vertex* v_pusher_origin, Vertex* v_puller_origin);
+                        
   bool is_swap_possible(Vertex* v_pusher_origin, Vertex* v_puller_origin);
 
   void clean_constraint(HNode* H_goal);
   // traffic op 
-
+  
+  void learning_regret_value(std::vector<std::array<Vertex*, 5> >& C_next_actions, const Config& C_curr, Config& C_next);
   void running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal, bool is_goal);
+  void incremental_regret_and_traffic(HNode* H_goal);
   void incremental_increase_traffic_with_time_window(HNode* H_goal);
   void incremental_increase_traffic(HNode* H_goal);
   void incremental_increase_traffic_plus_traffic_op(HNode* H_goal);
