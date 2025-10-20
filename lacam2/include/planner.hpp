@@ -13,7 +13,8 @@
 #include "guidance_heuristic.hpp"
 // objective function
 enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS};
-enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, ONLINE_TRAFFIC_TW, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW, INCRE_PLUS_ONLINE_TRAFFIC, REGERT_TRAFFIC};
+enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, ONLINE_TRAFFIC_TW, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW, 
+  INCRE_PLUS_ONLINE_TRAFFIC, REGERT_TRAFFIC, TRAINNING_TRAFFIC, LOADING_TRAFFIC};
 std::ostream& operator<<(std::ostream& os, const Objective objective);
 std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic);
 // PIBT agent
@@ -73,10 +74,14 @@ struct HNode {
     }
   }
 
-  void reordering_based_on_traffic(size_t N, GuidanceHeuristic& G){
+  void reordering_based_on_traffic(size_t N, GuidanceHeuristic& G, Traffic_OP op){
       // initialize
       // for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_Astar_heuristic(i, C[i]->id)/ (N) ;
-    for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_regret_heuristic(i, C[i]->id) / N;
+    if(op == TRAINNING_TRAFFIC || op == REGERT_TRAFFIC || op == LOADING_TRAFFIC){
+      for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_regret_heuristic(i, C[i]->id) / N;
+    }else{
+      for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_Astar_heuristic(i, C[i]->id)/ (N) ;
+    }
     // set order
     std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(),

@@ -23,10 +23,16 @@ struct TrafficMap {
     std::vector<double> incremental_flow;
     std::vector<bool> visited;
     std::vector<double> normalized_incremental_flow;
+
     std::vector<double> PIBT_edge_Regret;
     std::vector<double> PIBT_vertex_Regret;
     std::vector<double> PIBT_regret_flow;
     std::vector<double> normalized_PIBT_regret_flow;
+
+    std::vector<double> snapshot_PIBT_regret_flow;
+    std::vector<double> snapshot_normalized_PIBT_regret_flow;
+
+
 
     double scaling_factor = 10;
     double scaling_min = 0;
@@ -46,6 +52,9 @@ struct TrafficMap {
       normalized_PIBT_regret_flow.resize(width * height * 5, 0);
       PIBT_edge_Regret.resize(width * height * 5, 0);
       PIBT_vertex_Regret.resize(width * height, 0);
+
+      snapshot_PIBT_regret_flow.resize(width * height * 5, 0);
+      snapshot_normalized_PIBT_regret_flow.resize(width * height * 5, 0);
 
       // std::cout<< total_edges <<std::endl;
     }
@@ -90,6 +99,53 @@ struct TrafficMap {
 
       return a * 5 + dir;
     }
+
+    void apply_normal_pdf(std::vector<double>& costs) {
+        if (costs.empty()) return;
+
+        std::vector<double> v = costs;
+        std::sort(v.begin(), v.end());
+        double median = v[v.size()/2];
+        double q25 = v[v.size()/4];
+        double q75 = v[3*v.size()/4];
+        double iqr = std::max(1e-9, q75 - q25);
+        double sigma = std::max(1e-6, iqr / 1.349);
+
+        double max_pdf = 1.0 / (sigma * std::sqrt(2*M_PI)); // peak value
+
+        for (double& x : costs) {
+            double z = (x - median) / sigma;
+            double pdf = std::exp(-0.5 * z * z) / (sigma * std::sqrt(2*M_PI));
+            x = 10.0 * (pdf / max_pdf); // normalize to [0,10] range
+        }
+    }
+
+
+    void apply_normal_cdf(std::vector<double>& costs) {
+        if (costs.empty()) return;
+
+        // --- Compute robust center and spread ---
+        std::vector<double> v = costs;
+        std::sort(v.begin(), v.end());
+        double median = v[v.size()/2];
+        double q25 = v[v.size()/4];
+        double q75 = v[3*v.size()/4];
+        double iqr = std::max(1e-9, q75 - q25);
+        double sigma = std::max(1e-6, iqr / 1.349);  // robust std estimate
+
+        // --- Apply Normal CDF ---
+        for (double& x : costs) {
+            double z = (x - median) / sigma;
+            double cdf = 0.5 * (1.0 + std::erf(z / std::sqrt(2.0)));
+            x = cdf; // now in [0,1]
+        }
+
+        // --- Optionally re-scale to [0,10] ---
+        for (double& x : costs)
+            x *= 10.0;
+    }
+
+
     void increase_regret_on_edge(uint a, uint b, double regret_value) {
       visited[a] = true;
       visited[b] = true;
@@ -188,8 +244,12 @@ struct TrafficMap {
           normalized_PIBT_regret_flow[i] = PIBT_regret_flow[i] / max_val;
         }
       }
-      
-      
+      // print_normalized_regret_flow("pre_traffic.csv");
+      // std::vector<double> w;
+      // smooth_by_jacobi(normalized_PIBT_regret_flow, 0.4, 100, w);
+      // normalized_PIBT_regret_flow = w;
+      // // print_normalized_regret_flow("after_traffic.csv");
+      // bool a = 0;
     }
         
     void reset() {
@@ -197,6 +257,18 @@ struct TrafficMap {
       std::fill(vertex_flow.begin(), vertex_flow.end(), 0);
       std::fill(edge_flow.begin(), edge_flow.end(), 0);
       std::fill(normalized_incremental_flow.begin(), normalized_incremental_flow.end(), 0);
+    }
+
+
+    void snapshot_flow_map(){
+      if (snapshot_PIBT_regret_flow.size() == PIBT_regret_flow.size()) {
+        std::memcpy(snapshot_PIBT_regret_flow.data(), PIBT_regret_flow.data(),
+                    PIBT_regret_flow.size() * sizeof(double));
+        std::memcpy(snapshot_normalized_PIBT_regret_flow.data(), normalized_PIBT_regret_flow.data(),
+                    normalized_PIBT_regret_flow.size() * sizeof(double));            
+      }else{
+        std::cout<<"size doesn't match"<<std::endl;
+      }
     }
     
     // int undirected_edge_index(uint a, uint b) const {
@@ -398,22 +470,6 @@ struct TrafficMap {
     }
 
 
-    void print_normalized_regret_flow(const std::string& flow_filename) {
-      std::ofstream vout(flow_filename);
-      vout << "vertex_in,vertex_out,edge_flow\n";
-      for (size_t i = 0; i < G->U.size(); ++i) {
-        if(G->U[i] == nullptr) continue; // skip if vertex is null
-        for(const auto& neighbor : G->U[i]->neighbor) {
-          uint neighbor_index = neighbor->index;
-          int edge_idx = edge_index(i, neighbor_index);
-          vout << i << "," << neighbor_index << "," 
-              << scaling_factor * normalized_PIBT_regret_flow[edge_idx]<<"\n";
-        }
-      }
-      vout.close();
-    }
-
-
     void print_normalized_incremental_flow(const std::string& flow_filename) {
       std::ofstream vout(flow_filename);
       vout << "vertex_in,vertex_out,edge_flow\n";
@@ -429,6 +485,122 @@ struct TrafficMap {
       vout.close();
     }
 
+
+    void print_normalized_regret_flow(const std::string& flow_filename) {
+      std::ofstream vout(flow_filename);
+      vout << "vertex_in,vertex_out,edge_flow\n";
+      for (size_t i = 0; i < G->U.size(); ++i) {
+        if(G->U[i] == nullptr) continue; // skip if vertex is null
+        for(const auto& neighbor : G->U[i]->neighbor) {
+          uint neighbor_index = neighbor->index;
+          int edge_idx = edge_waiting_index(i, neighbor_index);
+          vout << i << "," << neighbor_index<< "," << scaling_factor *  normalized_PIBT_regret_flow[edge_idx] <<"\n";
+        }
+      }
+      vout.close();
+    }
+
+
+    // void print_normalized_regret_flow(const std::string& flow_filename) {
+    //   std::ofstream vout(flow_filename);
+    //   vout << "vertex_in,vertex_out,edge_flow\n";
+    //   for (size_t i = 0; i < G->U.size(); ++i) {
+    //     if(G->U[i] == nullptr) continue; // skip if vertex is null
+    //     for(const auto& neighbor : G->U[i]->neighbor) {
+    //       uint neighbor_index = neighbor->index;
+    //       vout << i << "," << neighbor_index<<"," << get_regret_cost(i,neighbor_index)<<"\n";
+    //     }
+    //   }
+    //   vout.close();
+    // }
+
+    // void print_normalized_incremental_flow(const std::string& flow_filename) {
+    //   std::ofstream vout(flow_filename);
+    //   vout << "vertex_in,vertex_out,edge_flow\n";
+    //   for (size_t i = 0; i < G->U.size(); ++i) {
+    //     if(G->U[i] == nullptr) continue; // skip if vertex is null
+    //     for(const auto& neighbor : G->U[i]->neighbor) {
+    //       uint neighbor_index = neighbor->index;
+    //       int edge_idx = edge_index(i, neighbor_index);
+    //       vout << i << "," << neighbor_index << "," 
+    //           << scaling_factor * normalized_incremental_flow[edge_idx]<<"\n";
+    //     }
+    //   }
+    //   vout.close();
+    // }
+
+
+
+    // Jacobi diffusion with anchor to w0
+    void smooth_by_jacobi(const std::vector<double>& w0,
+                          double lambda, int iters,
+                          std::vector<double>& w) {
+        const int M = static_cast<int>(w0.size());
+        if (M == 0) { w.clear(); return; }
+
+        w = w0;
+        std::vector<double> next(M, 0.0);
+
+        for (int it = 0; it < iters; ++it) {
+            // iterate over vertices and their outgoing (including wait) edges
+            for (size_t a = 0; a < G->U.size(); ++a) {
+                if (G->U[a] == nullptr) continue;
+
+                // process outgoing edges a -> nb
+                for (const auto& nb_v : G->U[a]->neighbor) {
+                    uint b = nb_v->index;
+                    int e = edge_waiting_index(static_cast<uint>(a), b);
+                    if (e < 0 || e >= M) continue;
+
+                    // collect neighbor edge indices (from a and from b), excluding e
+                    std::unordered_set<int> s;
+                    for (const auto& x : G->U[a]->neighbor) {
+                        int idx = edge_waiting_index(static_cast<uint>(a), x->index);
+                        if (idx >= 0 && idx != e) s.insert(idx);
+                    }
+                    if (G->U[b] != nullptr) {
+                        for (const auto& x : G->U[b]->neighbor) {
+                            int idx = edge_waiting_index(static_cast<uint>(b), x->index);
+                            if (idx >= 0 && idx != e) s.insert(idx);
+                        }
+                        // include wait-at-b as neighbor-of-edge if present
+                        int wait_b = edge_waiting_index(static_cast<uint>(b), static_cast<uint>(b));
+                        if (wait_b >= 0 && wait_b != e) s.insert(wait_b);
+                    }
+
+                    if (s.empty()) {
+                        next[e] = w0[e]; // anchor to w0 if no neighbors
+                        continue;
+                    }
+
+                    double sumN = 0.0;
+                    for (int nb_idx : s) sumN += w[nb_idx];
+                    double denom = 1.0 + lambda * static_cast<double>(s.size());
+                    next[e] = (w0[e] + lambda * sumN) / denom;
+                }
+
+                // also process the wait/self-edge a->a
+                int e_wait = edge_waiting_index(static_cast<uint>(a), static_cast<uint>(a));
+                if (e_wait >= 0 && e_wait < M) {
+                    std::unordered_set<int> s;
+                    for (const auto& x : G->U[a]->neighbor) {
+                        int idx = edge_waiting_index(static_cast<uint>(a), x->index);
+                        if (idx >= 0 && idx != e_wait) s.insert(idx);
+                    }
+                    if (s.empty()) {
+                        next[e_wait] = w0[e_wait];
+                    } else {
+                        double sumN = 0.0;
+                        for (int nb_idx : s) sumN += w[nb_idx];
+                        double denom = 1.0 + lambda * static_cast<double>(s.size());
+                        next[e_wait] = (w0[e_wait] + lambda * sumN) / denom;
+                    }
+                }
+            } // end vertices
+
+            w.swap(next);
+        } // end iterations
+    }
 
     void export_traffic_map_csv(const std::string& flow_filename) const {
       // Export vertex flow
@@ -447,6 +619,45 @@ struct TrafficMap {
       }
       vout.close();
     }
+
+
+
+    void export_PIBT_regret_flow_csv(const std::string& filename) const {
+      // std::cout<<"outputing "<< filename << std::endl;
+      std::ofstream fout(filename);
+      fout << "index,PIBT_regret_flow,normalized_PIBT_regret_flow\n";
+      size_t expected = static_cast<size_t>(width) * static_cast<size_t>(height) * 5;
+      for (size_t i = 0; i < expected; ++i) {
+        fout << i << ',' << snapshot_PIBT_regret_flow[i] << ',' << snapshot_normalized_PIBT_regret_flow[i] << '\n';
+      }
+      fout.close();
+    }
+
+    void import_PIBT_regret_flow_csv(const std::string& filename) {
+      std::ifstream fin(filename);
+      std::string line;
+      // skip header
+      std::getline(fin, line);
+      size_t expected = static_cast<size_t>(width) * static_cast<size_t>(height) * 5;
+      PIBT_regret_flow.assign(expected, 0.0);
+      normalized_PIBT_regret_flow.assign(expected, 0.0);
+      size_t idx = 0;
+      while (std::getline(fin, line) && idx < expected) {
+        // parse "index,val1,val2"
+        size_t p1 = line.find(',');
+        if (p1 == std::string::npos) continue;
+        size_t p2 = line.find(',', p1 + 1);
+        if (p2 == std::string::npos) continue;
+        // ignore parsed index (line.substr(0,p1))
+        PIBT_regret_flow[idx] = std::stod(line.substr(p1 + 1, p2 - (p1 + 1))) /2;
+        normalized_PIBT_regret_flow[idx] = std::stod(line.substr(p2 + 1)) /2 ;
+        ++idx;
+      }
+      fin.close();
+      // apply_normal_cdf(normalized_PIBT_regret_flow);
+    }
+
+
 
 
 };

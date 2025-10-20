@@ -8,9 +8,9 @@
             "program": "${workspaceFolder}/build/main",
             "args": [
                 "-v", "3",
-                "-m", "assets/random-32-32-10.map",
+                "-m", "assets/random-32-32-20.map",
                 "-t", "6000",
-                "-N", "500",
+                "-N", "400",
                 "--objective", "2",
                 "-s", "1",
                 "--traffic", "7",

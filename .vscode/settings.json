@@ -83,6 +83,7 @@
         "algorithm": "cpp",
         "filesystem": "cpp",
         "execution": "cpp",
-        "print": "cpp"
+        "print": "cpp",
+        "thread": "cpp"
     }
 }

@@ -34,10 +34,10 @@ int main(int argc, char* argv[])
         return std::string("0");
       });
   program.add_argument("-f", "--traffic")
-    .help("0: none, 1: pre-traffic, 2: online-traffic, 3: online-traffic-tw, 4: incre-traffic, 5: incre-traffic-with-tw, 6:INCRE_PLUS_ONLINE_TRAFFIC, 7: REGERT_TRAFFIC")
+    .help("0: none, 1: pre-traffic, 2: online-traffic, 3: online-traffic-tw, 4: incre-traffic, 5: incre-traffic-with-tw, 6:INCRE_PLUS_ONLINE_TRAFFIC, 7: REGERT_TRAFFIC, 8:TRAINNING_TRAFFIC, 9:Loading_traffic")
     .default_value(std::string("0"))
     .action([](const std::string& value) {
-      static const std::vector<std::string> C = {"0", "1", "2", "3", "4", "5","6","7"};
+      static const std::vector<std::string> C = {"0", "1", "2", "3", "4", "5","6","7","8","9"};
       if (std::find(C.begin(), C.end(), value) != C.end()) return value;
       return std::string("0");
     });
@@ -77,7 +77,7 @@ int main(int argc, char* argv[])
   auto additional_info = std::string("");
   const auto deadline = Deadline(time_limit_sec * 1000);
   const auto solution = solve(ins, additional_info, verbose - 1, &deadline, &MT,
-                              objective, traffic, restart_rate);
+                              objective, traffic, map_name, restart_rate);
   const auto comp_time_ms = deadline.elapsed_ms();
 
   // failure
