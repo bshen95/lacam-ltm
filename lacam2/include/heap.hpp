@@ -20,20 +20,21 @@ struct V_Node{
     double g = 0;
     double h = 0;
     double f = 0;
-    double tie_breaker = 0; // tie breaker for equal f values
+    int v_id = 0;
     bool expanded = false;
     bool generated = false;
-    bool in_queue = false;
-    uint predecessor = 0;
-    Vertex* v = nullptr;
+    int predecessor = 0;
     unsigned int priority = 0;
-    V_Node(double _g, double _h, Vertex* _v) : g(_g), h(_h), f(_g + _h), 
-    v(_v) {}
+    V_Node(double _g, double _h) : g(_g), h(_h), f(_g + _h){}
     V_Node() = default;
 
     // this is used for indexing in the priority queue
     unsigned int get_priority() const { return priority; }
     void set_priority(unsigned int p) { priority = p; }
+
+    int get_v_id() const {
+        return v_id;
+    }
 
     double get_g() const{
         return g;
@@ -41,13 +42,6 @@ struct V_Node{
 
     double get_f() const {
         return f;
-    }
-
-    double get_tie_breaker() const {
-        if(v == nullptr){
-            return rand() % 2 ; 
-        }
-        return v->index;
     }
 
     void update_f(){
@@ -61,7 +55,8 @@ struct cmp_less_f
     {
         if (lhs.get_f() == rhs.get_f()){
                 if (lhs.get_g() == rhs.get_g())
-                    return rand() % 2;
+                    return lhs.get_v_id() < rhs.get_v_id();
+                    // rand() % 2;
                     // return lhs.get_tie_breaker() < rhs.get_tie_breaker();
                 else
                     return lhs.get_g() > rhs.get_g();
@@ -72,21 +67,21 @@ struct cmp_less_f
     }
 };
 
-struct cmp_less_f_tie_breaker
-{
-    inline bool operator()(const V_Node& lhs, const V_Node& rhs) const
-    {
-        if (lhs.get_f() == rhs.get_f()){
-                if (lhs.get_tie_breaker() == rhs.get_tie_breaker())
-                    return rand() % 2;
-                else
-                    return lhs.get_tie_breaker() > rhs.get_tie_breaker();
-        }
-        else
-            return lhs.get_f() < rhs.get_f();
+// struct cmp_less_f_tie_breaker
+// {
+//     inline bool operator()(const V_Node& lhs, const V_Node& rhs) const
+//     {
+//         if (lhs.get_f() == rhs.get_f()){
+//                 if (lhs.get_tie_breaker() == rhs.get_tie_breaker())
+//                     return rand() % 2;
+//                 else
+//                     return lhs.get_tie_breaker() > rhs.get_tie_breaker();
+//         }
+//         else
+//             return lhs.get_f() < rhs.get_f();
 
-    }
-};
+//     }
+// };
 
 struct min_q 
 { static const bool is_min_ = true; };
@@ -338,6 +333,6 @@ class pqueue
 };
 
 typedef pqueue<V_Node, cmp_less_f, min_q> pqueue_min_f;
-typedef pqueue<V_Node, cmp_less_f_tie_breaker, min_q> pqueue_min_f_tie_breaker;
+// typedef pqueue<V_Node, cmp_less_f_tie_breaker, min_q> pqueue_min_f_tie_breaker;
 
 #endif

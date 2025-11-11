@@ -356,10 +356,10 @@ void Planner::pre_traffic_optimization(){
       traffic_map.add_path(path);
       revised_path[agent_id] = path;
       // update the edge weights in the traffic map
-          if(is_expired(deadline)){
+      if(is_expired(deadline)){
       // run optimization for 10 sec;
-      return;
-    }
+        return;
+      }
     } 
     if(is_expired_time(deadline, 10000)){
       // run optimization for 10 sec;

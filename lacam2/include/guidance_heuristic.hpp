@@ -41,7 +41,7 @@ public:
             heuristic_table[i].resize(G->U.size());
         }   
         bfs_queues.resize(number_of_agents);
-        V_size = G->U.size();
+        V_size = G->V.size();
         W_width = G->width;
     }
 
@@ -67,7 +67,7 @@ public:
             for (size_t j = 0; j < V_size; ++j) {
                 V_Node_table[i][j].generated = false;
                 V_Node_table[i][j].expanded = false;
-                V_Node_table[i][j].v= ins->G.V[j];
+                V_Node_table[i][j].v_id= ins->G.V[j]->id;
             }
             auto n = ins->goals[i];
             OPEN[i].push(&V_Node_table[i][n->id]);
@@ -102,16 +102,15 @@ public:
         if (V_Node_table[i][v_id].expanded){
             return V_Node_table[i][v_id].g;
         } 
-        // std::cout <<" HHHHH I am here "<< std::endl;
         while (!OPEN[i].empty()) {
             auto & current_queue = OPEN[i];
             V_Node* curr = OPEN[i].pop();
             curr->expanded = true;
-            for (auto* neighbor : curr->v->neighbor) {
+            for (auto* neighbor : G->V[curr->v_id]->neighbor) {
                 uint n = neighbor->id;
                 if (V_Node_table[i][n].expanded) continue;
                 // auto t0 = traffic_map->get_incremental_traffic_cost(curr->v->index, neighbor->index);
-                auto t0 = traffic_map->get_incremental_traffic_cost(curr->v->index, neighbor->index);
+                auto t0 = traffic_map->get_incremental_traffic_cost(G->V[curr->v_id]->index, neighbor->index);
                 // the free flow cost is alway one ;
                 double tentative_g = curr->g + 1 + t0;
                 // double tentative_g = curr->g + std::max(1.0, t0);
@@ -137,7 +136,7 @@ public:
                     OPEN[i].decrease_key(&V_Node_table[i][neighbor->id]);
                 }
             }
-            if (curr->v->id == v_id){
+            if (G->V[curr->v_id]->id == v_id){
                 // std::cout <<" Found heuristic for agent "<< i << " at vertex "<< v_id << " with cost "<< curr->g << std::endl;
                 return curr->g;
             }
@@ -159,13 +158,13 @@ public:
             auto & current_queue = OPEN[i];
             V_Node* curr = OPEN[i].pop();
             curr->expanded = true;
-            for (auto* neighbor : curr->v->neighbor) {
+            for (auto* neighbor : G->V[curr->v_id]->neighbor) {
                 uint n = neighbor->id;
                 if (V_Node_table[i][n].expanded) continue;
                 // auto t0 = traffic_map->get_incremental_traffic_cost(curr->v->index, neighbor->index);
                 // directed graph get incoming edges. 
                 // auto t0 = traffic_map->get_regret_cost( curr->v->index,neighbor->index);
-                auto t0 = traffic_map->get_regret_cost( neighbor->index,curr->v->index);
+                auto t0 = traffic_map->get_regret_cost( neighbor->index,G->V[curr->v_id]->index);
                 // auto t0 = traffic_map->get_regret_cost(curr->v->index, neighbor->index);
                 // auto t0 = traffic_map->get_incremental_traffic_cost(curr->v->index, neighbor->index);
                 // the free flow cost is alway one ;
@@ -193,7 +192,7 @@ public:
                     OPEN[i].decrease_key(&V_Node_table[i][neighbor->id]);
                 }
             }
-            if (curr->v->id == v_id){
+            if (G->V[curr->v_id]->id == v_id){
                 // std::cout <<" Found heuristic for agent "<< i << " at vertex "<< v_id << " with cost "<< curr->g << std::endl;
                 return curr->g;
             }
