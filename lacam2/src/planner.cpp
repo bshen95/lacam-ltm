@@ -82,8 +82,8 @@ Planner::Planner(const Instance* _ins, const Deadline* _deadline,
       A(N, nullptr),
       occupied_now(V_size, nullptr),
       occupied_next(V_size, nullptr),
-      traffic_map(&ins->G),
-      time_period_traffic_map(incre_num_of_time_buckets, TrafficMap(&ins->G)),
+      traffic_map(&ins->G,ins->N),
+      time_period_traffic_map(incre_num_of_time_buckets, TrafficMap(&ins->G,ins->N)),
       astar_search(&traffic_map, &ins->G),
       guidance_heuristic( &ins->G, &traffic_map, N)
 {
@@ -194,7 +194,7 @@ void Planner::incremental_increase_traffic_with_time_window(HNode* H_goal){
     if(incre_num_of_time_buckets < 1){
       std::cout<<"Error: incre_num_of_time_buckets < 1"<<std::endl;
     }
-    time_period_traffic_map.resize(incre_num_of_time_buckets , TrafficMap(&ins->G));
+    time_period_traffic_map.resize(incre_num_of_time_buckets , TrafficMap(&ins->G,ins->N));
   }
   for(uint t = 0; t < incre_num_of_time_buckets; t++){
     time_period_traffic_map[t].reset();
@@ -326,14 +326,19 @@ void Planner::incremental_increase_traffic_plus_traffic_op(HNode* H_goal){
 }
 
 void Planner::pre_traffic_optimization(){
-
+  // std::cout<<" start optimizing "<<std::endl; 
   traffic_map.reset();
   revised_path.clear();
   for( int i = 0 ; i < N ; i++){
     auto path = astar_search.compute_traffic_path_index(ins->starts[i]->index, ins->goals[i]->index);
     traffic_map.add_path(path);
     revised_path.push_back(path);
+    if(is_expired(deadline)){
+      // run optimization for 10 sec;
+      return;
+    }
   }
+  // std::cout<<"finish path computataion optimizing "<<std::endl; 
   // traffic_map.initialize_traffic_map(revised_path);
   std::vector<uint> ordering = std::vector<uint>(N);
   std::iota(ordering.begin(), ordering.end(), 0);
@@ -345,12 +350,16 @@ void Planner::pre_traffic_optimization(){
       traffic_map.remove_path(revised_path[agent_id]);
       auto path = astar_search.compute_traffic_path_index(ins->starts[agent_id]->index, ins->goals[agent_id]->index);
       if (path.empty()) {
-        std::cout << "No path found for agent " << agent_id << std::endl;
+        // std::cout << "No path found for agent " << agent_id << std::endl;
         continue; // No path found, skip this agent
       }
       traffic_map.add_path(path);
       revised_path[agent_id] = path;
       // update the edge weights in the traffic map
+          if(is_expired(deadline)){
+      // run optimization for 10 sec;
+      return;
+    }
     } 
     if(is_expired_time(deadline, 10000)){
       // run optimization for 10 sec;
@@ -460,11 +469,14 @@ void Planner::traffic_optimization(HNode* H_goal){
         traffic_map.add_path(path);
         revised_path[agent_id] = path;
         // update the edge weights in the traffic map
+        if(is_expired(deadline)){
+          // run optimization for 10 sec;
+          return;
+        }
       } 
       times --;
     } 
     guidance_heuristic.set_gudiance_path(revised_path);
-
   
 }
 
@@ -720,14 +732,30 @@ Solution Planner::solve(std::string& additional_info)
   HNode* H_goal = nullptr;          // to store goal node
   global_goal = H_goal;
   // DFS
-  if(verbose == -1){
+  if(printing_tree){
     std::cout<< "version: 1.4.0\n";
     std::cout<< "events:\n";
   }
 
+  if(printing_tree){
+    std::cout<< " - type: generating" <<std::endl;
+    std::cout<< "   id: "<< H_init->node_id <<std::endl;
+    std::cout<< "   pId: " 
+          << (H_init->parent == nullptr ? "0" : std::to_string(H_init->parent->node_id)) <<std::endl;
+    std::cout<< "   f_value: "<< H_init->f<<std::endl;
+  }
   if(traffic_op == LOADING_TRAFFIC){
     guidance_heuristic.initialized = true;
     H_init->reordering_based_on_traffic(N,guidance_heuristic,traffic_op);
+    // auto expanded = D.get_expended_vertex();
+    // int cout = 0;
+    // for( int v = 0 ; v < expanded.size(); v++){
+    //   if(expanded[v] == true){
+    //     cout ++;
+    //   }
+    // }
+    // // std::cout<< "Loaded traffic map, expanded nodes: " << cout << "/" << expanded.size() << std::endl;
+    // traffic_map.remove_visited_node_and_renormalized(D.get_expended_vertex());
   }
   while (!OPEN.empty() && !is_expired(deadline)) {
     // if(OPEN.size() == 1){
@@ -759,14 +787,15 @@ Solution Planner::solve(std::string& additional_info)
     if (H_goal == nullptr && is_same_config(H->C, ins->goals)) {
       H_goal = H;
       solver_info(1, "found solution, cost: ", H->g);
-      if(verbose == -1){
+      if(printing_tree){
         std::cout<< " - type: expanding" <<std::endl;
         std::cout<< "   id: "<< H->node_id <<std::endl;
         std::cout<< "   pId: " 
               << (H->parent == nullptr ? "0" : std::to_string(H->parent->node_id)) <<std::endl;
         std::cout<< "   f_value: "<< H->f<<std::endl;
       }
-      
+      // export_solution_from_HNode(H_goal,"solution_1.csv");
+      // traffic_map.print_normalized_regret_flow("regret_flow.csv");
       if (objective == OBJ_NONE) break;
       if(traffic_op != NONE && traffic_op != PRE_TRAFFIC){
         running_traffic_optimization(OPEN, H_goal, true);
@@ -805,7 +834,7 @@ Solution Planner::solve(std::string& additional_info)
       }
     }
     
-    if(verbose == -1){
+    if(printing_tree){
       std::cout<< " - type: expanding" <<std::endl;
       std::cout<< "   id: "<< H->node_id <<std::endl;
       std::cout<< "   pId: " 
@@ -865,7 +894,7 @@ Solution Planner::solve(std::string& additional_info)
         OPEN.push(H_new);
       }
       num_of_nodes_generated ++;
-      if(verbose == -1){
+      if(printing_tree){
         std::cout<< " - type: generating" <<std::endl;
         std::cout<< "   id: "<< H_new->node_id <<std::endl;
         std::cout<< "   pId: " 
@@ -950,7 +979,7 @@ void Planner::rewrite(HNode* H_from, HNode* H_to, HNode* H_goal,
     for (auto n_to : n_from->neighbor) {
       auto g_val = n_from->g + get_edge_cost(n_from->C, n_to->C);
       if (g_val < n_to->g) {
-        if(verbose == -1){
+        if(printing_tree){
           std::cout<< " - type: rewriting" <<std::endl;
           std::cout<< "   id: "<< n_to->node_id <<std::endl;
           std::cout<< "   pId: " 

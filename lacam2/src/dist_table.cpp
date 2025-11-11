@@ -1,13 +1,13 @@
 #include "../include/dist_table.hpp"
 
 DistTable::DistTable(const Instance& ins)
-    : V_size(ins.G.V.size()), table(ins.N, std::vector<uint>(V_size, V_size))
+    : V_size(ins.G.V.size()), U_size(ins.G.U.size()), table(ins.N, std::vector<uint>(V_size, V_size))
 {
   setup(&ins);
 }
 
 DistTable::DistTable(const Instance* ins)
-    : V_size(ins->G.V.size()), table(ins->N, std::vector<uint>(V_size, V_size))
+    : V_size(ins->G.V.size()), U_size(ins->G.U.size()), table(ins->N, std::vector<uint>(V_size, V_size))
 {
   setup(ins);
 }
@@ -20,6 +20,7 @@ void DistTable::setup(const Instance* ins)
     OPEN[i].push(n);
     table[i][n->id] = 0;
   }
+  expended_vertex = std::vector<bool>(U_size, false);
 }
 
 uint DistTable::get(uint i, uint v_id)
@@ -39,6 +40,7 @@ uint DistTable::get(uint i, uint v_id)
     auto&& n = OPEN[i].front();
     OPEN[i].pop();
     const int d_n = table[i][n->id];
+    // expended_vertex[n->index] = true; 
     for (auto&& m : n->neighbor) {
       const int d_m = table[i][m->id];
       if (d_n + 1 >= d_m) continue;

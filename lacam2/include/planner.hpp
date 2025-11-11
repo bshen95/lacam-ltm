@@ -139,6 +139,7 @@ struct Planner {
   uint incre_max_makespan = 0; 
   uint incre_num_of_time_buckets = 0;
   uint incre_curr_time_bucket = 0;
+  bool printing_tree = false;
 
   uint order_updated_times = 0;
   double learning_rate = 0.6;

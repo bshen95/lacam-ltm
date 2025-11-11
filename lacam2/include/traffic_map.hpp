@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdint>
+#include <cstring>
 typedef unsigned int uint;
 struct EdgePairHash {
     size_t operator()(const std::pair<int,int>& p) const {
@@ -15,6 +16,7 @@ struct EdgePairHash {
 
 struct TrafficMap {
     int width, height;
+    int num_of_agents;
     // vertex flow && contra flow 
     std::vector<double> vertex_flow;
     std::vector<double> edge_flow;
@@ -38,7 +40,9 @@ struct TrafficMap {
     double scaling_min = 0;
     double scaling_max = 100;
 
-    TrafficMap(const Graph* _G) : G(_G) , width(_G->width), height(_G->width) {
+
+
+    TrafficMap(const Graph* _G, const int _num_of_agents) : G(_G), num_of_agents(_num_of_agents), width(_G->width), height(_G->width) {
       // int total_edges = (width - 1) * height + width * (height - 1);
       // edge_flow.resize(total_edges, 0.0);
       incremental_flow.resize(width * height * 4, 0);
@@ -133,18 +137,29 @@ struct TrafficMap {
         double iqr = std::max(1e-9, q75 - q25);
         double sigma = std::max(1e-6, iqr / 1.349);  // robust std estimate
 
+        // double q10 = v[v.size()/10];
+        // double q90 = v[9*v.size()/10];
+        // double iqr = std::max(1e-9, q90 - q10);
+        // double sigma = std::max(1e-6, iqr / 2.563); 
         // --- Apply Normal CDF ---
-        for (double& x : costs) {
-            double z = (x - median) / sigma;
+        for(int i = 0; i < normalized_PIBT_regret_flow.size(); ++i){
+            double z = (costs[i] - median) / sigma;
             double cdf = 0.5 * (1.0 + std::erf(z / std::sqrt(2.0)));
-            x = cdf; // now in [0,1]
+            normalized_PIBT_regret_flow[i] = cdf;
         }
-
-        // --- Optionally re-scale to [0,10] ---
-        for (double& x : costs)
-            x *= 10.0;
     }
 
+    void apply_min_max_normalization(std::vector<double>& costs) {
+        if (costs.empty()) return;
+
+        double min_cost = *std::min_element(costs.begin(), costs.end());
+        double max_cost = *std::max_element(costs.begin(), costs.end());
+        double range = std::max(1e-9, max_cost - min_cost);
+
+        for(int i = 0; i < normalized_PIBT_regret_flow.size(); ++i){
+            normalized_PIBT_regret_flow[i] = (costs[i] - min_cost) / range;
+        }
+    }
 
     void increase_regret_on_edge(uint a, uint b, double regret_value) {
       visited[a] = true;
@@ -235,15 +250,18 @@ struct TrafficMap {
         // std::cout<< " Adding regret cost on edge from "<< edge.first << " to "<< edge.second << " with cost "
         // << (t1 + t2) << std::endl;
       }
-      double max_val = 0.0;
-      for (double val : PIBT_regret_flow) {
-          if (val > max_val) max_val = val;
-      }
-      if (max_val > 0) {
-        for(int i = 0; i < normalized_PIBT_regret_flow.size(); ++i){
-          normalized_PIBT_regret_flow[i] = PIBT_regret_flow[i] / max_val;
-        }
-      }
+
+      apply_min_max_normalization(PIBT_regret_flow);
+      // apply_normal_cdf(PIBT_regret_flow);
+      // double max_val = 0.0;
+      // for (double val : PIBT_regret_flow) {
+      //     if (val > max_val) max_val = val;
+      // }
+      // if (max_val > 0) {
+      //   for(int i = 0; i < normalized_PIBT_regret_flow.size(); ++i){
+      //     normalized_PIBT_regret_flow[i] = PIBT_regret_flow[i] / max_val;
+      //   }
+      // }
       // print_normalized_regret_flow("pre_traffic.csv");
       // std::vector<double> w;
       // smooth_by_jacobi(normalized_PIBT_regret_flow, 0.4, 100, w);
@@ -625,10 +643,11 @@ struct TrafficMap {
     void export_PIBT_regret_flow_csv(const std::string& filename) const {
       // std::cout<<"outputing "<< filename << std::endl;
       std::ofstream fout(filename);
-      fout << "index,PIBT_regret_flow,normalized_PIBT_regret_flow\n";
+      fout << "index,PIBT_regret_flow,normalized_PIBT_regret_flow,num_of_agent\n";
       size_t expected = static_cast<size_t>(width) * static_cast<size_t>(height) * 5;
       for (size_t i = 0; i < expected; ++i) {
-        fout << i << ',' << snapshot_PIBT_regret_flow[i] << ',' << snapshot_normalized_PIBT_regret_flow[i] << '\n';
+        fout << i << ',' << snapshot_PIBT_regret_flow[i] << ',' << snapshot_normalized_PIBT_regret_flow[i] << ','
+        << num_of_agents << '\n';
       }
       fout.close();
     }
@@ -648,16 +667,26 @@ struct TrafficMap {
         if (p1 == std::string::npos) continue;
         size_t p2 = line.find(',', p1 + 1);
         if (p2 == std::string::npos) continue;
+        size_t p3 = line.find(',', p2 + 1);
+        if (p3 == std::string::npos) continue;
         // ignore parsed index (line.substr(0,p1))
-        PIBT_regret_flow[idx] = std::stod(line.substr(p1 + 1, p2 - (p1 + 1))) /2;
-        normalized_PIBT_regret_flow[idx] = std::stod(line.substr(p2 + 1)) /2 ;
+        int input_num_of_agents = std::stoi(line.substr(p3 + 1));
+        PIBT_regret_flow[idx] = std::stod(line.substr(p1 + 1, p2 - (p1 + 1))) / input_num_of_agents * num_of_agents ;
+        normalized_PIBT_regret_flow[idx] = std::stod(line.substr(p2 + 1)) / input_num_of_agents * num_of_agents ;
         ++idx;
       }
       fin.close();
-      // apply_normal_cdf(normalized_PIBT_regret_flow);
     }
 
-
+    void remove_visited_node_and_renormalized(std::vector<bool> expanded_vertex){
+      for(int index = 0 ; index < expanded_vertex.size(); ++index){
+        if(expanded_vertex[index]){
+          PIBT_regret_flow[index] = 0;
+        }
+        apply_min_max_normalization(PIBT_regret_flow);
+      }
+    }
+ 
 
 
 };

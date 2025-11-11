@@ -13,7 +13,7 @@
                 "-N", "400",
                 "--objective", "2",
                 "-s", "1",
-                "--traffic", "7",
+                "--traffic", "9",
             ],
             "stopAtEntry": true,
             "cwd": "${workspaceFolder}",
