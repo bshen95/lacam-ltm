@@ -333,8 +333,8 @@ void Planner::pre_traffic_optimization(){
     auto path = astar_search.compute_traffic_path_index(ins->starts[i]->index, ins->goals[i]->index);
     traffic_map.add_path(path);
     revised_path.push_back(path);
-    if(is_expired(deadline)){
-      // run optimization for 10 sec;
+    if(is_expired(deadline) || is_expired_time(deadline, traffic_pre_optimization_time)){
+      // fail to optimize traffic. 
       return;
     }
   }
@@ -356,16 +356,11 @@ void Planner::pre_traffic_optimization(){
       traffic_map.add_path(path);
       revised_path[agent_id] = path;
       // update the edge weights in the traffic map
-      if(is_expired(deadline)){
-      // run optimization for 10 sec;
-        return;
+      if(is_expired(deadline) || is_expired_time(deadline, traffic_pre_optimization_time)){
+        stop = true;
+        break;
       }
     } 
-    if(is_expired_time(deadline, 10000)){
-      // run optimization for 10 sec;
-      stop = true;
-      break;
-    }
   } 
   guidance_heuristic.set_gudiance_path(revised_path);
 }
@@ -706,7 +701,9 @@ Solution Planner::solve(std::string& additional_info)
     incre_num_of_time_buckets = 0;
     incre_curr_time_bucket = 0;
     guidance_heuristic.initialized = false;
-    guidance_heuristic.setup(ins);
+    if( traffic_op != PRE_TRAFFIC && traffic_op != ONLINE_TRAFFIC){
+        guidance_heuristic.setup(ins);
+    }
     if(traffic_op == PRE_TRAFFIC){
       pre_traffic_optimization();
     }
@@ -763,6 +760,9 @@ Solution Planner::solve(std::string& additional_info)
     //     nn.second->reordering_based_on_traffic(N,guidance_heuristic);
     //   }
     // }
+    if(traffic_op == PRE_TRAFFIC && !guidance_heuristic.initialized){
+      break;
+    }
     loop_cnt += 1;
 
     // do not pop here!

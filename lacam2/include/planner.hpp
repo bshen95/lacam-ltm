@@ -134,7 +134,6 @@ struct Planner {
   uint current_time_bucket = 0;
   uint max_time_period = 20; // Maximum time period for traffic maps
 
-
   uint incre_time_window_size = 50;
   uint incre_max_makespan = 0; 
   uint incre_num_of_time_buckets = 0;
@@ -166,6 +165,8 @@ struct Planner {
   std::vector<TrafficMap> time_period_traffic_map; // Time-period based traffic maps for A* search
   ModifiedAstar astar_search; // A* search for traffic path finding
   GuidanceHeuristic guidance_heuristic; // Guidance heuristic for pathfinding
+
+  uint traffic_pre_optimization_time = 30000;
 
   Planner(const Instance* _ins, const Deadline* _deadline, std::mt19937* _MT,
           const int _verbose = 0,
