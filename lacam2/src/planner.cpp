@@ -637,16 +637,22 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_go
   // std::cout<< "restarting........"<<std::endl;
   // std::cout<< "f:"<<H_goal->f << "g:"<<H_goal->g << "h:"<< H_goal->h<<std::endl;
 
-  // if(is_goal){
-  //   export_solution_from_HNode(H_goal,"solution_to_" + std::to_string(solution_id)+".csv");
-  //   traffic_map.print_normalized_regret_flow("incremental_flow_to_" + std::to_string(solution_id)+".csv");
-  //   solution_id ++;
-  // }
+  if(is_goal){
+    export_solution_from_HNode(H_goal,"solution_to_" + std::to_string(solution_id)+".csv");
+    // traffic_map.print_normalized_regret_flow("incremental_flow_to_" + std::to_string(solution_id)+".csv");
+    solution_id ++;
+  }
   // if(is_goal){
   //     learning_rate = 0.6;
   // }else{
   //     learning_rate = 1.2;
   // }
+  // std::cout<<" Restarting: " << restarting_times << " "<< std::endl;
+  // std::cout<<" Restarting: " << restarting_times << " "<< H_goal->f <<" " << H_goal->h << " " << H_goal->g << std::endl; 
+  // restarting_times ++;
+  
+  // if(is_goal)
+
   if(is_goal){
     curr_goal_node = H_goal;
     HNode* current = H_goal;
@@ -728,6 +734,9 @@ Solution Planner::solve(std::string& additional_info)
   auto C_new = Config(N, nullptr);  // for new configuration
   HNode* H_goal = nullptr;          // to store goal node
   global_goal = H_goal;
+
+  HNode* H_last = nullptr;   
+
   // DFS
   if(printing_tree){
     std::cout<< "version: 1.4.0\n";
@@ -754,6 +763,16 @@ Solution Planner::solve(std::string& additional_info)
     // // std::cout<< "Loaded traffic map, expanded nodes: " << cout << "/" << expanded.size() << std::endl;
     // traffic_map.remove_visited_node_and_renormalized(D.get_expended_vertex());
   }
+
+  // double a = guidance_heuristic.get_regret_heuristic(42, 581);
+  // double b = guidance_heuristic.get_regret_heuristic(42, ins->goals[42]->id);
+  // double c = guidance_heuristic.get_regret_heuristic(42, 580);
+  // double d = guidance_heuristic.get_regret_heuristic(42, 582);
+  // double e = guidance_heuristic.get_regret_heuristic(42, 579);
+  // double f = guidance_heuristic.get_regret_heuristic(42, 578);
+  // double g = guidance_heuristic.get_regret_heuristic(42, 607);
+  //   double h = guidance_heuristic.get_regret_heuristic(42, 606);
+  // double aaaa = 0;
   while (!OPEN.empty() && !is_expired(deadline)) {
     // if(OPEN.size() == 1){
     //   for(auto nn: EXPLORED){
@@ -767,7 +786,7 @@ Solution Planner::solve(std::string& additional_info)
 
     // do not pop here!
     auto H = OPEN.top();  // high-level node
-
+    H_last = H; 
     // low-level search end
     if (H->search_tree.empty()) {
       OPEN.pop();
@@ -794,7 +813,7 @@ Solution Planner::solve(std::string& additional_info)
               << (H->parent == nullptr ? "0" : std::to_string(H->parent->node_id)) <<std::endl;
         std::cout<< "   f_value: "<< H->f<<std::endl;
       }
-      // export_solution_from_HNode(H_goal,"solution_1.csv");
+      // export_solution_from_HNode(H_goal,"solution_same.csv");
       // traffic_map.print_normalized_regret_flow("regret_flow.csv");
       if (objective == OBJ_NONE) break;
       if(traffic_op != NONE && traffic_op != PRE_TRAFFIC){
@@ -845,6 +864,7 @@ Solution Planner::solve(std::string& additional_info)
     //   // H->reordering_based_on_traffic(N,guidance_heuristic);
     // }
     // create successors at the low-level search
+
     auto L = H->search_tree.front();
     H->search_tree.pop();
     expand_lowlevel_tree(H, L);
@@ -903,7 +923,8 @@ Solution Planner::solve(std::string& additional_info)
       }
     }
   }
-
+  // export_solution_from_HNode(H_last,"deadlock_new_11111.csv");
+  
   // backtrack
   if (H_goal != nullptr) {
     auto H = H_goal;
@@ -1109,6 +1130,7 @@ bool Planner::funcPIBT(Agent* ai)
     C_next[i][k] = u;
     if (MT != nullptr)
       tie_breakers[u->id] = get_random_float(MT);  // set tie-breaker
+      // tie_breakers[u->id] = get_random_float(MT);  // set tie-breaker
   }
   C_next[i][K] = ai->v_now;
 
@@ -1150,14 +1172,12 @@ bool Planner::funcPIBT(Agent* ai)
     }
   } else if (traffic_op == REGERT_TRAFFIC || traffic_op == TRAINNING_TRAFFIC || traffic_op == LOADING_TRAFFIC){
     if(!guidance_heuristic.initialized){
-      std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
-                [&](Vertex* const v, Vertex* const u) {
-                  return D.get(i, v) + tie_breakers[v->id] <
-                  D.get(i, u) + tie_breakers[u->id];
-                });
+        std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
+                  [&](Vertex* const v, Vertex* const u) {
+                    return D.get(i, v) + tie_breakers[v->id] <
+                    D.get(i, u) + tie_breakers[u->id];
+                  });
     }else{
-      // std::cout<< "Agent: " << i << std::endl;
-      
         std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
               [&](Vertex* const v, Vertex* const u) {
                 // double a1 = guidance_heuristic.get_regret_heuristic(i, v->id) + traffic_map.get_regret_cost(ai->v_now->index,v->index) + tie_breakers[v->id];
@@ -1178,8 +1198,17 @@ bool Planner::funcPIBT(Agent* ai)
   // mark the agent as accessed ;
   accessed_agents[i] = accessed_times;
   Agent* swap_agent = swap_possible_and_required(ai);
-  if (swap_agent != nullptr)
+  if (swap_agent != nullptr){
+    if(swap_based_on_original_distance){
+      std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
+          [&](Vertex* const v, Vertex* const u) {
+            return D.get(i, v) + tie_breakers[v->id] <
+                  D.get(i, u) + tie_breakers[u->id];
+          }); 
+    }
+    
     std::reverse(C_next[i].begin(), C_next[i].begin() + K + 1);
+  }
 
   // main operation
   for (auto k = 0; k < K + 1; ++k) {
@@ -1249,23 +1278,23 @@ bool Planner::is_swap_required(const uint pusher, const uint puller,
                                Vertex* v_pusher_origin, Vertex* v_puller_origin)
 {
 
-
-  if (traffic_op == INCRE_TRAFFIC || traffic_op == INCRE_TRAFFIC_WITH_TW){
-    if(guidance_heuristic.initialized){
-      return is_swap_required_gudiance_Astar_version(pusher,puller,v_pusher_origin,v_puller_origin);
-    }
-  } else if (traffic_op == ONLINE_TRAFFIC || traffic_op == PRE_TRAFFIC 
-    || traffic_op == ONLINE_TRAFFIC_TW || traffic_op == INCRE_PLUS_ONLINE_TRAFFIC)
-  {
-    if(guidance_heuristic.initialized){
-      return is_swap_required_gudiance_version(pusher,puller,v_pusher_origin,v_puller_origin);
-    }
-  }else if (traffic_op == REGERT_TRAFFIC || traffic_op == TRAINNING_TRAFFIC || traffic_op == LOADING_TRAFFIC){
-    if(guidance_heuristic.initialized){
-      return is_swap_required_gudiance_regret_version(pusher,puller,v_pusher_origin,v_puller_origin);
+  if(!swap_based_on_original_distance){
+    if (traffic_op == INCRE_TRAFFIC || traffic_op == INCRE_TRAFFIC_WITH_TW){
+      if(guidance_heuristic.initialized){
+        return is_swap_required_gudiance_Astar_version(pusher,puller,v_pusher_origin,v_puller_origin);
+      }
+    } else if (traffic_op == ONLINE_TRAFFIC || traffic_op == PRE_TRAFFIC 
+      || traffic_op == ONLINE_TRAFFIC_TW || traffic_op == INCRE_PLUS_ONLINE_TRAFFIC)
+    {
+      if(guidance_heuristic.initialized){
+        return is_swap_required_gudiance_version(pusher,puller,v_pusher_origin,v_puller_origin);
+      }
+    }else if (traffic_op == REGERT_TRAFFIC || traffic_op == TRAINNING_TRAFFIC || traffic_op == LOADING_TRAFFIC){
+      if(guidance_heuristic.initialized){
+        return is_swap_required_gudiance_regret_version(pusher,puller,v_pusher_origin,v_puller_origin);
+      }
     }
   }
-
   auto v_pusher = v_pusher_origin;
   auto v_puller = v_puller_origin;
   Vertex* tmp = nullptr;

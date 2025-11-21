@@ -32,6 +32,7 @@ public:
     std::vector<std::vector<V_Node>>
       V_Node_table;
     std::vector<Vertex*> starts;
+    std::vector<Vertex*> goals;
     const TrafficMap* traffic_map = nullptr;  
 
     GuidanceHeuristic(const Graph* _G, const TrafficMap* _traffic_map, int _number_of_agents)
@@ -60,6 +61,7 @@ public:
     {
         OPEN.resize(ins->N);
         starts = ins->starts;
+        goals = ins->goals;
         V_Node_table = std::vector<std::vector<V_Node>>(ins->N, std::vector<V_Node>(V_size));
         for (size_t i = 0; i < ins->N; ++i) {
             // avoid push back copy;
@@ -168,7 +170,28 @@ public:
                 // auto t0 = traffic_map->get_regret_cost(curr->v->index, neighbor->index);
                 // auto t0 = traffic_map->get_incremental_traffic_cost(curr->v->index, neighbor->index);
                 // the free flow cost is alway one ;
-                double tentative_g = curr->g + 1 + t0;
+                double tentative_g  = 0;
+                // if(curr->g == 0 ){
+                //     tentative_g = 1; 
+                // }else{
+                //     tentative_g = curr->g + 1 + t0;
+                // }
+
+                // if (manhattan_dist(neighbor, goals[i]) < 5){
+                //     tentative_g = curr->g + 1 ;
+                // }else{
+                //     tentative_g = curr->g + 1 + t0;
+                // }
+                
+
+                // # Create Gaussian-based weight (inverted)
+                double sigma = 5; 
+                double d = manhattan_dist(neighbor, goals[i]);
+                double weights = 1 - std::exp(-( d * d ) / (2 * sigma * sigma));
+                weights = 1; 
+                tentative_g = curr->g + 1 + t0 * weights;
+                // tentative_g = curr->g + 1 + t0;
+
                 // double tentative_g = curr->g + std::max(1.0, t0);
                 // if(std::max(1.0, t0) != 1 + t0){
                 //     std::cout<< " traffic cost "<< std::max(1.0, t0)<< std::endl;

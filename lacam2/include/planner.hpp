@@ -154,12 +154,17 @@ struct Planner {
   std::vector<uint> accessed_agents; // for quick reset of traffic map
   uint accessed_times;
 
+
+  bool swap_based_on_original_distance = false; 
+
+
   std::vector<std::vector<uint>> revised_path;
   std::vector<std::vector<uint>> checked_path;
 
   HNode* restart_node; 
   HNode* curr_goal_node; 
   std::vector<HNode*> soultion_node_pool;
+  std::unordered_set<HNode*> soultion_node_set;
 
   TrafficMap traffic_map ; // Traffic map for A* search
   std::vector<TrafficMap> time_period_traffic_map; // Time-period based traffic maps for A* search
@@ -167,6 +172,8 @@ struct Planner {
   GuidanceHeuristic guidance_heuristic; // Guidance heuristic for pathfinding
 
   uint traffic_pre_optimization_time = 30000;
+  uint restarting_times = 0;
+
 
   Planner(const Instance* _ins, const Deadline* _deadline, std::mt19937* _MT,
           const int _verbose = 0,

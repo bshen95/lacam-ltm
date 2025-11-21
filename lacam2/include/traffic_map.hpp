@@ -279,6 +279,7 @@ struct TrafficMap {
 
 
     void snapshot_flow_map(){
+      // snapshot the query and so it store the traffic map of last restart.
       if (snapshot_PIBT_regret_flow.size() == PIBT_regret_flow.size()) {
         std::memcpy(snapshot_PIBT_regret_flow.data(), PIBT_regret_flow.data(),
                     PIBT_regret_flow.size() * sizeof(double));
@@ -671,9 +672,16 @@ struct TrafficMap {
         if (p3 == std::string::npos) continue;
         // ignore parsed index (line.substr(0,p1))
         int input_num_of_agents = std::stoi(line.substr(p3 + 1));
-        PIBT_regret_flow[idx] = std::stod(line.substr(p1 + 1, p2 - (p1 + 1))) / input_num_of_agents * num_of_agents ;
-        normalized_PIBT_regret_flow[idx] = std::stod(line.substr(p2 + 1)) / input_num_of_agents * num_of_agents ;
+        PIBT_regret_flow[idx] = std::stod(line.substr(p1 + 1, p2 - (p1 + 1)))  ;
+        normalized_PIBT_regret_flow[idx] = std::stod(line.substr(p2 + 1)) ;
+        // PIBT_regret_flow[idx] = std::stod(line.substr(p1 + 1, p2 - (p1 + 1))) / input_num_of_agents * num_of_agents ;
+        // normalized_PIBT_regret_flow[idx] = std::stod(line.substr(p2 + 1)) / input_num_of_agents * num_of_agents ;
         ++idx;
+      }
+      for(int i = 0 ; i < normalized_PIBT_regret_flow.size(); i++){
+        if(normalized_incremental_flow[i] < 0){ 
+          std::cout<<"weird"<<std::endl;
+        }
       }
       fin.close();
     }
