@@ -223,6 +223,17 @@ struct TrafficMap {
       }
     }
 
+    void increase_regret_single_step(int v_from, int v_to) {
+      // remove path from traffic map
+      visited[v_from] = true;
+      visited[v_to] = true;
+      if(v_from == v_to) {
+        PIBT_vertex_Regret[v_to] ++;
+      } // Skip if the same vertex
+      int e_index = edge_waiting_index(v_from, v_to);
+      PIBT_edge_Regret[e_index] ++; 
+    }
+
     void record_regret_cost( double learning_rate){
       std::unordered_set<std::pair<int,int>, EdgePairHash> visited_edge;
       for(size_t i = 0; i < visited.size(); ++i) {

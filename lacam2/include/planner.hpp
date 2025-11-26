@@ -14,7 +14,7 @@
 // objective function
 enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS};
 enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, ONLINE_TRAFFIC_TW, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW, 
-  INCRE_PLUS_ONLINE_TRAFFIC, REGERT_TRAFFIC, TRAINNING_TRAFFIC, LOADING_TRAFFIC};
+  INCRE_PLUS_ONLINE_TRAFFIC, REGERT_TRAFFIC, TRAINNING_TRAFFIC, LOADING_TRAFFIC, CONTINUE_TRANNING};
 std::ostream& operator<<(std::ostream& os, const Objective objective);
 std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic);
 // PIBT agent
@@ -42,7 +42,16 @@ struct HNode {
 
   // tree
   HNode* parent;
-  std::set<HNode*> neighbor;
+  struct HNodeLessById {
+    bool operator()(const HNode* a, const HNode* b) const {
+      // define a strict weak ordering on a stable key
+      return a->node_id < b->node_id;
+    }
+  };  
+  std::set<HNode*, HNodeLessById> neighbor;
+  // WASTED TWO DAYS ON THIS FUKKK. without the comparator, it does not guareentee to access the 
+  // neigbourhe in same order, this could make the results looks different even when seed is set 
+  // to be the same.
 
   // costs
   uint g;        // g-value (might be updated)
@@ -77,8 +86,13 @@ struct HNode {
   void reordering_based_on_traffic(size_t N, GuidanceHeuristic& G, Traffic_OP op){
       // initialize
       // for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_Astar_heuristic(i, C[i]->id)/ (N) ;
-    if(op == TRAINNING_TRAFFIC || op == REGERT_TRAFFIC || op == LOADING_TRAFFIC){
-      for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_regret_heuristic(i, C[i]->id) / N;
+    if(op == TRAINNING_TRAFFIC || op == REGERT_TRAFFIC || op == LOADING_TRAFFIC || op == CONTINUE_TRANNING){
+      for (uint i = 0; i < N; ++i){
+        priorities[i] = (double)G.get_regret_heuristic(i, C[i]->id) / (10*N);
+        // if (G.get_regret_heuristic(i, C[i]->id) == 0){
+        //   priorities[i] = priorities[i] - int(priorities[i]);
+        // }
+      }
     }else{
       for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_Astar_heuristic(i, C[i]->id)/ (N) ;
     }
@@ -129,6 +143,15 @@ struct Planner {
   Agents occupied_now;                          // for quick collision checking
   Agents occupied_next;                         // for quick collision checking
 
+  struct Cmp {
+    bool operator()(const std::pair<double,HNode*>& a, const std::pair<double,HNode*>& b) const {
+      return a.first > b.first;
+    }
+  };
+  std::priority_queue<std::pair<double,HNode*>, std::vector<std::pair<double,HNode*>>, Cmp> restart_heap;
+  HNode* global_goal_nodes;
+
+
   uint best_makespan = 0;
   uint time_bucket_size = 10; // Time bucket size for time-period based traffic maps
   uint current_time_bucket = 0;
@@ -150,6 +173,10 @@ struct Planner {
 
   uint num_of_nodes_generated = 0;
   uint solution_id = 0; 
+
+  uint node_limitation = 0;
+
+  std::unordered_map<Config, HNode*, ConfigHasher>* GLOBAL_EXPORED;
   HNode* global_goal;
   std::vector<uint> accessed_agents; // for quick reset of traffic map
   uint accessed_times;
@@ -160,6 +187,7 @@ struct Planner {
 
   std::vector<std::vector<uint>> revised_path;
   std::vector<std::vector<uint>> checked_path;
+  std::vector<HNode*> node_expaned; 
 
   HNode* restart_node; 
   HNode* curr_goal_node; 
@@ -171,9 +199,12 @@ struct Planner {
   ModifiedAstar astar_search; // A* search for traffic path finding
   GuidanceHeuristic guidance_heuristic; // Guidance heuristic for pathfinding
 
-  uint traffic_pre_optimization_time = 30000;
+  uint traffic_pre_optimization_time = deadline->time_limit_ms /2;
   uint restarting_times = 0;
-
+  uint float_time_calls = 0; 
+  uint update_times = 0;
+  uint traffic_node_added = 0;
+  bool load_traffic_csv = false;
 
   Planner(const Instance* _ins, const Deadline* _deadline, std::mt19937* _MT,
           const int _verbose = 0,
@@ -183,8 +214,6 @@ struct Planner {
           const float _restart_rate = 0.001);
   ~Planner();
 
-
-  
   Solution solve(std::string& additional_info);
   void expand_lowlevel_tree(HNode* H, LNode* L);
   void rewrite(HNode* H_from, HNode* T, HNode* H_goal,
@@ -217,6 +246,8 @@ struct Planner {
   // traffic op 
   
   void learning_regret_value(std::vector<std::array<Vertex*, 5> >& C_next_actions, const Config& C_curr, Config& C_next);
+  void learning_traffic_cost(const Config& C_from, const Config& C_to);
+  
   void running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal, bool is_goal);
   void incremental_regret_and_traffic(HNode* H_goal);
   void incremental_increase_traffic_with_time_window(HNode* H_goal);
