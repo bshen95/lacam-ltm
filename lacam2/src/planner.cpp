@@ -899,7 +899,8 @@ Solution Planner::solve(std::string& additional_info)
       if (H_goal != nullptr) {
         node_limitation++;
         // std::cout<<" hahfhsdfhshfdsahfdshf"<<std::endl;
-        if (node_limitation > 500) {
+        if (node_limitation >
+            (H->current_make_span - restart_node->current_make_span) * 10) {
           if (traffic_op != NONE && traffic_op != PRE_TRAFFIC) {
             running_traffic_optimization(OPEN, H, false);
           }
