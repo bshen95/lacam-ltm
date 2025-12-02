@@ -275,16 +275,20 @@ struct TrafficMap {
         PIBT_regret_flow[edge_idx] += PIBT_edge_Regret[revserse_edge_idx] +
                                       PIBT_vertex_Regret[edge.first];
       }
-      if (PIBT_regret_flow[edge_idx] < 0) {
-        std::cout << " Error: negative regret flow on edge from " << edge.first
-                  << " to " << edge.second << std::endl;
-        std::cout << " Error: negative regret flow on edge from " << edge.first
-                  << " to " << edge.second << std::endl;
-        std::cout << " Error: negative regret flow on edge from " << edge.first
-                  << " to " << edge.second << std::endl;
-        std::cout << " Error: negative regret flow on edge from " << edge.first
-                  << " to " << edge.second << std::endl;
-      }
+      // if (PIBT_regret_flow[edge_idx] < 0) {
+      //   std::cout << " Error: negative regret flow on edge from " <<
+      //   edge.first
+      //             << " to " << edge.second << std::endl;
+      //   std::cout << " Error: negative regret flow on edge from " <<
+      //   edge.first
+      //             << " to " << edge.second << std::endl;
+      //   std::cout << " Error: negative regret flow on edge from " <<
+      //   edge.first
+      //             << " to " << edge.second << std::endl;
+      //   std::cout << " Error: negative regret flow on edge from " <<
+      //   edge.first
+      //             << " to " << edge.second << std::endl;
+      // }
       // incremental_flow[edge_idx] += (t1 + t2);
       // std::cout<< " Adding regret cost on edge from "<< edge.first << " to
       // "<< edge.second << " with cost "

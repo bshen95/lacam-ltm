@@ -190,10 +190,10 @@ public:
         // }
 
         // # Create Gaussian-based weight (inverted)
-        double sigma = 5;
-        double d = manhattan_dist(neighbor, goals[i]);
-        double weights = 1 - std::exp(-(d * d) / (2 * sigma * sigma));
-        // double weights = 1;
+        // double sigma = 5;
+        // double d = manhattan_dist(neighbor, goals[i]);
+        // double weights = 1 - std::exp(-(d * d) / (2 * sigma * sigma));
+        double weights = 1;
         tentative_g = curr->g + 1 + t0 * weights;
         // tentative_g = curr->g + 1 + t0;
 
