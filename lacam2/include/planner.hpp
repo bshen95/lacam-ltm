@@ -6,15 +6,26 @@
 
 #include "dist_table.hpp"
 #include "graph.hpp"
+#include "guidance_heuristic.hpp"
 #include "instance.hpp"
-#include "utils.hpp"
 #include "modified_Astar.hpp"
 #include "traffic_map.hpp"
-#include "guidance_heuristic.hpp"
+#include "utils.hpp"
 // objective function
-enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS};
-enum Traffic_OP { NONE, PRE_TRAFFIC, ONLINE_TRAFFIC, ONLINE_TRAFFIC_TW, INCRE_TRAFFIC, INCRE_TRAFFIC_WITH_TW, 
-  INCRE_PLUS_ONLINE_TRAFFIC, REGERT_TRAFFIC, TRAINNING_TRAFFIC, LOADING_TRAFFIC, CONTINUE_TRANNING};
+enum Objective { OBJ_NONE, OBJ_MAKESPAN, OBJ_SUM_OF_LOSS };
+enum Traffic_OP {
+  NONE,
+  PRE_TRAFFIC,
+  ONLINE_TRAFFIC,
+  ONLINE_TRAFFIC_TW,
+  INCRE_TRAFFIC,
+  INCRE_TRAFFIC_WITH_TW,
+  INCRE_PLUS_ONLINE_TRAFFIC,
+  REGERT_TRAFFIC,
+  TRAINNING_TRAFFIC,
+  LOADING_TRAFFIC,
+  CONTINUE_TRANNING
+};
 std::ostream& operator<<(std::ostream& os, const Objective objective);
 std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic);
 // PIBT agent
@@ -43,15 +54,16 @@ struct HNode {
   // tree
   HNode* parent;
   struct HNodeLessById {
-    bool operator()(const HNode* a, const HNode* b) const {
+    bool operator()(const HNode* a, const HNode* b) const
+    {
       // define a strict weak ordering on a stable key
       return a->node_id < b->node_id;
     }
-  };  
+  };
   std::set<HNode*, HNodeLessById> neighbor;
-  // WASTED TWO DAYS ON THIS FUKKK. without the comparator, it does not guareentee to access the 
-  // neigbourhe in same order, this could make the results looks different even when seed is set 
-  // to be the same.
+  // WASTED TWO DAYS ON THIS FUKKK. without the comparator, it does not
+  // guareentee to access the neigbourhe in same order, this could make the
+  // results looks different even when seed is set to be the same.
 
   // costs
   uint g;        // g-value (might be updated)
@@ -69,32 +81,41 @@ struct HNode {
         const uint _h);
   ~HNode();
 
-  void set_make_span(uint _current_make_span) {
-     current_make_span = _current_make_span;
+  void set_make_span(uint _current_make_span)
+  {
+    current_make_span = _current_make_span;
   }
 
-  void set_priority_and_order(const std::vector<uint>& input_order) {
+  void set_priority_and_order(const std::vector<uint>& input_order)
+  {
     // Set the order directly from the input
     order = input_order;
 
     // Update priorities based on the new order
     for (size_t i = 0; i < order.size(); ++i) {
-        priorities[order[i]] = (float) (order.size() - i)/ order.size(); // Higher priority for earlier indices
+      priorities[order[i]] =
+          (float)(order.size() - i) /
+          order.size();  // Higher priority for earlier indices
     }
   }
 
-  void reordering_based_on_traffic(size_t N, GuidanceHeuristic& G, Traffic_OP op){
-      // initialize
-      // for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_Astar_heuristic(i, C[i]->id)/ (N) ;
-    if(op == TRAINNING_TRAFFIC || op == REGERT_TRAFFIC || op == LOADING_TRAFFIC || op == CONTINUE_TRANNING){
-      for (uint i = 0; i < N; ++i){
-        priorities[i] = (double)G.get_regret_heuristic(i, C[i]->id) / (10*N);
+  void reordering_based_on_traffic(size_t N, GuidanceHeuristic& G,
+                                   Traffic_OP op)
+  {
+    // initialize
+    // for (uint i = 0; i < N; ++i) priorities[i] =
+    // (double)G.get_Astar_heuristic(i, C[i]->id)/ (N) ;
+    if (op == TRAINNING_TRAFFIC || op == REGERT_TRAFFIC ||
+        op == LOADING_TRAFFIC || op == CONTINUE_TRANNING) {
+      for (uint i = 0; i < N; ++i) {
+        priorities[i] = (double)G.get_regret_heuristic(i, C[i]->id) / (10 * N);
         // if (G.get_regret_heuristic(i, C[i]->id) == 0){
         //   priorities[i] = priorities[i] - int(priorities[i]);
         // }
       }
-    }else{
-      for (uint i = 0; i < N; ++i) priorities[i] = (double)G.get_Astar_heuristic(i, C[i]->id)/ (N) ;
+    } else {
+      for (uint i = 0; i < N; ++i)
+        priorities[i] = (double)G.get_Astar_heuristic(i, C[i]->id) / (N);
     }
     // set order
     std::iota(order.begin(), order.end(), 0);
@@ -102,11 +123,12 @@ struct HNode {
               [&](uint i, uint j) { return priorities[i] > priorities[j]; });
   }
 
-  void reordering(size_t N, DistTable& D) {
+  void reordering(size_t N, DistTable& D)
+  {
     for (size_t i = 0; i < N; ++i) {
-      if (D.get(i, C[i])== 0) {
+      if (D.get(i, C[i]) == 0) {
         priorities[i] = priorities[i] - (int)priorities[i];
-      }else{
+      } else {
         priorities[i] = priorities[i] + 1;
       }
     }
@@ -115,7 +137,6 @@ struct HNode {
     std::sort(order.begin(), order.end(),
               [&](uint i, uint j) { return priorities[i] > priorities[j]; });
   }
-
 };
 using HNodes = std::vector<HNode*>;
 
@@ -134,74 +155,77 @@ struct Planner {
   const uint N;       // number of agents
   const uint V_size;  // number o vertices
   DistTable D;
-  uint loop_cnt;      // auxiliary
+  uint loop_cnt;  // auxiliary
 
   // used in PIBT
-  std::vector<std::array<Vertex*, 5> > C_next;  // next locations, used in PIBT
-  std::vector<float> tie_breakers;              // random values, used in PIBT
+  std::vector<std::array<Vertex*, 5>> C_next;  // next locations, used in PIBT
+  std::vector<float> tie_breakers;             // random values, used in PIBT
   Agents A;
-  Agents occupied_now;                          // for quick collision checking
-  Agents occupied_next;                         // for quick collision checking
+  Agents occupied_now;   // for quick collision checking
+  Agents occupied_next;  // for quick collision checking
 
   struct Cmp {
-    bool operator()(const std::pair<double,HNode*>& a, const std::pair<double,HNode*>& b) const {
+    bool operator()(const std::pair<double, HNode*>& a,
+                    const std::pair<double, HNode*>& b) const
+    {
       return a.first > b.first;
     }
   };
-  std::priority_queue<std::pair<double,HNode*>, std::vector<std::pair<double,HNode*>>, Cmp> restart_heap;
+  std::priority_queue<std::pair<double, HNode*>,
+                      std::vector<std::pair<double, HNode*>>, Cmp>
+      restart_heap;
   HNode* global_goal_nodes;
 
-
   uint best_makespan = 0;
-  uint time_bucket_size = 10; // Time bucket size for time-period based traffic maps
+  uint time_bucket_size =
+      10;  // Time bucket size for time-period based traffic maps
   uint current_time_bucket = 0;
-  uint max_time_period = 20; // Maximum time period for traffic maps
+  uint max_time_period = 20;  // Maximum time period for traffic maps
 
   uint incre_time_window_size = 50;
-  uint incre_max_makespan = 0; 
+  uint incre_max_makespan = 0;
   uint incre_num_of_time_buckets = 0;
   uint incre_curr_time_bucket = 0;
   bool printing_tree = false;
 
   uint order_updated_times = 0;
   double learning_rate = 0.6;
-  // double decay_rate = 0.05; 
+  // double decay_rate = 0.05;
 
-  uint curr_tw_lower_bound = 0; 
+  uint curr_tw_lower_bound = 0;
   uint curr_tw_upper_bound = 0;
   uint tw_size = 50;
 
   uint num_of_nodes_generated = 0;
-  uint solution_id = 0; 
+  uint solution_id = 0;
 
   uint node_limitation = 0;
 
   std::unordered_map<Config, HNode*, ConfigHasher>* GLOBAL_EXPORED;
   HNode* global_goal;
-  std::vector<uint> accessed_agents; // for quick reset of traffic map
+  std::vector<uint> accessed_agents;  // for quick reset of traffic map
   uint accessed_times;
 
-
-  bool swap_based_on_original_distance = false; 
-
+  bool swap_based_on_original_distance = false;
 
   std::vector<std::vector<uint>> revised_path;
   std::vector<std::vector<uint>> checked_path;
-  std::vector<HNode*> node_expaned; 
+  std::vector<HNode*> node_expaned;
 
-  HNode* restart_node; 
-  HNode* curr_goal_node; 
+  HNode* restart_node;
+  HNode* curr_goal_node;
   std::vector<HNode*> soultion_node_pool;
   std::unordered_set<HNode*> soultion_node_set;
 
-  TrafficMap traffic_map ; // Traffic map for A* search
-  std::vector<TrafficMap> time_period_traffic_map; // Time-period based traffic maps for A* search
-  ModifiedAstar astar_search; // A* search for traffic path finding
-  GuidanceHeuristic guidance_heuristic; // Guidance heuristic for pathfinding
+  TrafficMap traffic_map;  // Traffic map for A* search
+  std::vector<TrafficMap>
+      time_period_traffic_map;  // Time-period based traffic maps for A* search
+  ModifiedAstar astar_search;   // A* search for traffic path finding
+  GuidanceHeuristic guidance_heuristic;  // Guidance heuristic for pathfinding
 
-  uint traffic_pre_optimization_time = deadline->time_limit_ms /2;
+  uint traffic_pre_optimization_time = deadline->time_limit_ms / 2;
   uint restarting_times = 0;
-  uint float_time_calls = 0; 
+  uint float_time_calls = 0;
   uint update_times = 0;
   uint traffic_node_added = 0;
   bool load_traffic_csv = false;
@@ -210,8 +234,7 @@ struct Planner {
           const int _verbose = 0,
           // other parameters
           const Objective _objective = OBJ_NONE,
-          const Traffic_OP _traffic = NONE,
-          const float _restart_rate = 0.001);
+          const Traffic_OP _traffic = NONE, const float _restart_rate = 0.001);
   ~Planner();
 
   Solution solve(std::string& additional_info);
@@ -222,7 +245,7 @@ struct Planner {
   uint get_edge_cost(HNode* H_from, HNode* H_to);
   uint get_h_value(const Config& C);
   bool get_new_config(HNode* H, LNode* L);
-  
+
   bool funcPIBT(Agent* ai);
 
   // swap operation
@@ -230,25 +253,32 @@ struct Planner {
   bool is_swap_required(const uint pusher, const uint puller,
                         Vertex* v_pusher_origin, Vertex* v_puller_origin);
 
-
   bool is_swap_required_gudiance_version(const uint pusher, const uint puller,
-                        Vertex* v_pusher_origin, Vertex* v_puller_origin);
-  
-  bool is_swap_required_gudiance_Astar_version(const uint pusher, const uint puller,
-                      Vertex* v_pusher_origin, Vertex* v_puller_origin);
-                      
-  bool is_swap_required_gudiance_regret_version(const uint pusher, const uint puller,
-                        Vertex* v_pusher_origin, Vertex* v_puller_origin);
-                        
+                                         Vertex* v_pusher_origin,
+                                         Vertex* v_puller_origin);
+
+  bool is_swap_required_gudiance_Astar_version(const uint pusher,
+                                               const uint puller,
+                                               Vertex* v_pusher_origin,
+                                               Vertex* v_puller_origin);
+
+  bool is_swap_required_gudiance_regret_version(const uint pusher,
+                                                const uint puller,
+                                                Vertex* v_pusher_origin,
+                                                Vertex* v_puller_origin);
+
   bool is_swap_possible(Vertex* v_pusher_origin, Vertex* v_puller_origin);
 
   void clean_constraint(HNode* H_goal);
-  // traffic op 
-  
-  void learning_regret_value(std::vector<std::array<Vertex*, 5> >& C_next_actions, const Config& C_curr, Config& C_next);
+  // traffic op
+
+  void learning_regret_value(
+      std::vector<std::array<Vertex*, 5>>& C_next_actions, const Config& C_curr,
+      Config& C_next);
   void learning_traffic_cost(const Config& C_from, const Config& C_to);
-  
-  void running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal, bool is_goal);
+
+  void running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal,
+                                    bool is_goal);
   void incremental_regret_and_traffic(HNode* H_goal);
   void incremental_increase_traffic_with_time_window(HNode* H_goal);
   void incremental_increase_traffic(HNode* H_goal);
@@ -259,11 +289,13 @@ struct Planner {
   void select_restart_node(std::stack<HNode*>& OPEN, HNode* H_goal);
   void propagate_order_to_neighbors(HNode* current_node);
   void learn_priority_order(HNode* H_goal);
-  void get_edge_cost_per_agent(std::vector<double>& agent_cost, 
-  const Config& C1, const Config& C2);
+  void get_edge_cost_per_agent(std::vector<double>& agent_cost,
+                               const Config& C1, const Config& C2);
   void export_solution_from_HNode(HNode* goal, const std::string& filename);
-  
-  void export_all_revised_paths(const std::vector<std::vector<uint>>& revised_path, const std::string& filename);
+
+  void export_all_revised_paths(
+      const std::vector<std::vector<uint>>& revised_path,
+      const std::string& filename);
 
   void backtrack_compute_sum_of_costs(HNode* H_goal);
   // utilities

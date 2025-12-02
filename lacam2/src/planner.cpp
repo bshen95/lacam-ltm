@@ -737,7 +737,10 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN,
         shortest_distance_to_goal += D.get(agent_id, current->C[agent_id]);
       }
       // restart_heap.push(std::make_pair(distance_to_goal/shortest_distance_to_goal,current));
-      double random = get_random_float(MT, 0.0, 0.5);
+      // double random = get_random_float(MT, 0.0, 0.5);
+      // restart_heap.push(std::make_pair(
+      //     // current->current_make_span / curr_goal_node->current_make_span,
+      //     distance_to_goal / shortest_distance_to_goal, current));
       restart_heap.push(std::make_pair(
           current->current_make_span / curr_goal_node->current_make_span,
           current));
