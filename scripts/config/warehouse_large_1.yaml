@@ -1,0 +1,16 @@
+# instances with massive agents
+# for MAPF benchmark
+solver_name: "lacam"
+solver_options:
+  - "--objective"
+  - "2"
+  - "--traffic"
+  - "0"
+num_min_agents: 1000
+num_max_agents: 10000
+num_interval_agents: 1000
+time_limit_sec: 60
+seeds: 1
+scen: scen-warehouse
+maps:
+  - warehouse-20-40-10-2-2

@@ -12,6 +12,7 @@ struct Instance {
   Config starts;
   Config goals;
   const uint N;  // number of agents
+  const std::string map_filename;
 
   // for testing
   Instance(const std::string& map_filename,
@@ -23,8 +24,9 @@ struct Instance {
   // random instance generation
   Instance(const std::string& map_filename, std::mt19937* MT,
            const uint _N = 1);
-  ~Instance() {}
 
+  ~Instance() {}
+  void exportInstance(const std::string& out_filename) const;
   // simple feasibility check of instance
   bool is_valid(const int verbose = 0) const;
 };

@@ -51,13 +51,16 @@ Instance::Instance(const std::string& scen_filename,
   }
 }
 
-Instance::Instance(const std::string& map_filename, std::mt19937* MT,
+Instance::Instance(const std::string& _map_filename, std::mt19937* MT,
                    const uint _N)
-    : G(Graph(map_filename)), starts(Config()), goals(Config()), N(_N)
+    : G(Graph(_map_filename)),
+      starts(Config()),
+      goals(Config()),
+      N(_N),
+      map_filename(_map_filename)
 {
   // random assignment
   const auto V_size = G.size();
-
   // set starts
   auto s_indexes = std::vector<uint>(V_size);
   std::iota(s_indexes.begin(), s_indexes.end(), 0);
@@ -81,6 +84,35 @@ Instance::Instance(const std::string& map_filename, std::mt19937* MT,
     if (goals.size() == N) break;
     ++j;
   }
+}
+
+void Instance::exportInstance(const std::string& out_filename) const
+{
+  std::ofstream out(out_filename);
+  if (!out) {
+    throw std::runtime_error("Cannot open output file: " + out_filename);
+  }
+  out << "version 1\n";
+  for (uint i = 0; i < N; i++) {
+    uint s_idx = starts[i]->index;
+    uint g_idx = goals[i]->index;
+
+    // Decode (x, y)
+    uint sx = s_idx % G.width;
+    uint sy = s_idx / G.width;
+
+    uint gx = g_idx % G.width;
+    uint gy = g_idx / G.width;
+
+    // Euclidean distance
+    double dist = std::sqrt((sx - gx) * (sx - gx) + (sy - gy) * (sy - gy));
+
+    out << i << "\t" << map_filename << "\t" << G.width << "\t" << G.height
+        << "\t" << sx << "\t" << sy << "\t" << gx << "\t" << gy << "\t"
+        << std::fixed << dist << "\n";
+  }
+
+  out.close();
 }
 
 bool Instance::is_valid(const int verbose) const

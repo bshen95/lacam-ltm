@@ -25,6 +25,9 @@ int main(int argc, char* argv[])
   program.add_argument("-l", "--log_short")
       .default_value(false)
       .implicit_value(true);
+  program.add_argument("-g", "--generate_instance")
+      .default_value(false)
+      .implicit_value(true);
   program.add_argument("-O", "--objective")
       .help("0: none, 1: makespan, 2: sum_of_loss")
       .default_value(std::string("0"))
@@ -34,13 +37,18 @@ int main(int argc, char* argv[])
         return std::string("0");
       });
   program.add_argument("-f", "--traffic")
-    .help("0: none, 1: pre-traffic, 2: online-traffic, 3: online-traffic-tw, 4: incre-traffic, 5: incre-traffic-with-tw, 6:INCRE_PLUS_ONLINE_TRAFFIC, 7: REGERT_TRAFFIC, 8:TRAINNING_TRAFFIC, 9:Loading_traffic")
-    .default_value(std::string("0"))
-    .action([](const std::string& value) {
-      static const std::vector<std::string> C = {"0", "1", "2", "3", "4", "5","6","7","8","9","10"};
-      if (std::find(C.begin(), C.end(), value) != C.end()) return value;
-      return std::string("0");
-    });
+      .help(
+          "0: none, 1: pre-traffic, 2: online-traffic, 3: online-traffic-tw, "
+          "4: incre-traffic, 5: incre-traffic-with-tw, "
+          "6:INCRE_PLUS_ONLINE_TRAFFIC, 7: REGERT_TRAFFIC, "
+          "8:TRAINNING_TRAFFIC, 9:Loading_traffic")
+      .default_value(std::string("0"))
+      .action([](const std::string& value) {
+        static const std::vector<std::string> C = {"0", "1", "2", "3", "4", "5",
+                                                   "6", "7", "8", "9", "10"};
+        if (std::find(C.begin(), C.end(), value) != C.end()) return value;
+        return std::string("0");
+      });
   program.add_argument("-r", "--restart_rate")
       .help("restart rate")
       .default_value(std::string("0.001"));
@@ -63,6 +71,7 @@ int main(int argc, char* argv[])
   const auto map_name = program.get<std::string>("map");
   const auto output_name = program.get<std::string>("output");
   const auto log_short = program.get<bool>("log_short");
+  const auto generate_instance = program.get<bool>("generate_instance");
   const auto N = std::stoi(program.get<std::string>("num"));
   const auto ins = scen_name.size() > 0 ? Instance(scen_name, map_name, N)
                                         : Instance(map_name, &MT, N);
@@ -73,6 +82,11 @@ int main(int argc, char* argv[])
   const auto restart_rate = std::stof(program.get<std::string>("restart_rate"));
   if (!ins.is_valid(1)) return 1;
 
+  if (generate_instance) {
+    ins.exportInstance(output_name);
+    info(1, verbose, "instance exported to ", output_name);
+    return 0;
+  }
   // solve
   auto additional_info = std::string("");
   const auto deadline = Deadline(time_limit_sec * 1000);

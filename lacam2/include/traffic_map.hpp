@@ -749,7 +749,7 @@ struct TrafficMap {
       ++idx;
     }
     for (int i = 0; i < normalized_PIBT_regret_flow.size(); i++) {
-      if (normalized_incremental_flow[i] < 0) {
+      if (normalized_PIBT_regret_flow[i] < 0) {
         std::cout << "weird" << std::endl;
       }
     }
