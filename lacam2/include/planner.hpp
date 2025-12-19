@@ -24,7 +24,9 @@ enum Traffic_OP {
   REGERT_TRAFFIC,
   TRAINNING_TRAFFIC,
   LOADING_TRAFFIC,
-  CONTINUE_TRANNING
+  CONTINUE_TRANNING,
+  SIMULATION_TRAFFIC,
+  PLANNING_AND_EXECUTION
 };
 std::ostream& operator<<(std::ostream& os, const Objective objective);
 std::ostream& operator<<(std::ostream& os, const Traffic_OP traffic);
@@ -106,7 +108,8 @@ struct HNode {
     // for (uint i = 0; i < N; ++i) priorities[i] =
     // (double)G.get_Astar_heuristic(i, C[i]->id)/ (N) ;
     if (op == TRAINNING_TRAFFIC || op == REGERT_TRAFFIC ||
-        op == LOADING_TRAFFIC || op == CONTINUE_TRANNING) {
+        op == LOADING_TRAFFIC || op == CONTINUE_TRANNING ||
+        op == PLANNING_AND_EXECUTION) {
       for (uint i = 0; i < N; ++i) {
         priorities[i] = (double)G.get_regret_heuristic(i, C[i]->id) / (10 * N);
         // if (G.get_regret_heuristic(i, C[i]->id) == 0){
@@ -213,6 +216,7 @@ struct Planner {
   std::vector<HNode*> node_expaned;
 
   HNode* restart_node;
+  HNode* simulation_start_node;
   HNode* curr_goal_node;
   std::vector<HNode*> soultion_node_pool;
   std::unordered_set<HNode*> soultion_node_set;
@@ -228,6 +232,11 @@ struct Planner {
   uint float_time_calls = 0;
   uint update_times = 0;
   uint traffic_node_added = 0;
+
+  uint simulation_nodes_limiatation = 100;
+  uint simulation_make_span_limitation = 10;
+
+  bool is_simulation = false;
   bool load_traffic_csv = false;
 
   Planner(const Instance* _ins, const Deadline* _deadline, std::mt19937* _MT,
@@ -237,7 +246,22 @@ struct Planner {
           const Traffic_OP _traffic = NONE, const float _restart_rate = 0.001);
   ~Planner();
 
+  Solution solve_with_simulation(std::string& additional_info);
+
   Solution solve(std::string& additional_info);
+
+  Solution planning_and_execution(std::string& additional_info);
+
+  HNode* planning_next_actions(
+      std::unordered_map<Config, HNode*, ConfigHasher>& EXPLORED,
+      std::stack<HNode*>& OPEN, HNode** H_goal, HNode** curr_config,
+      bool continue_search, double time_limits, uint curr_makespan);
+
+  void simulate_traffic_map(HNode* H_start, uint _makespan_limit,
+                            uint _node_limitation);
+  void simulate_rewrite(HNode* H_from, HNode* T, HNode* H_goal,
+                        std::stack<HNode*>& OPEN);
+
   void expand_lowlevel_tree(HNode* H, LNode* L);
   void rewrite(HNode* H_from, HNode* T, HNode* H_goal,
                std::stack<HNode*>& OPEN);
@@ -277,8 +301,12 @@ struct Planner {
       Config& C_next);
   void learning_traffic_cost(const Config& C_from, const Config& C_to);
 
+  void running_traffic_optimization_for_simulation(std::stack<HNode*>& OPEN,
+                                                   HNode* H_goal, bool is_goal);
+
   void running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal,
                                     bool is_goal);
+
   void incremental_regret_and_traffic(HNode* H_goal);
   void incremental_increase_traffic_with_time_window(HNode* H_goal);
   void incremental_increase_traffic(HNode* H_goal);
@@ -292,6 +320,8 @@ struct Planner {
   void get_edge_cost_per_agent(std::vector<double>& agent_cost,
                                const Config& C1, const Config& C2);
   void export_solution_from_HNode(HNode* goal, const std::string& filename);
+
+  void export_instance_starts_goals(const std::string& filename);
 
   void export_all_revised_paths(
       const std::vector<std::vector<uint>>& revised_path,

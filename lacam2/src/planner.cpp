@@ -123,6 +123,7 @@ void Planner::incremental_regret_and_traffic(HNode* H_goal)
   guidance_heuristic.reset(ins);
   guidance_heuristic.set_traffic_map(&traffic_map);
 }
+
 void Planner::incremental_increase_traffic(HNode* H_goal)
 {
   guidance_heuristic.initialized = true;
@@ -696,91 +697,540 @@ void Planner::running_traffic_optimization(std::stack<HNode*>& OPEN,
   // std::cout<< "f:"<<H_goal->f << "g:"<<H_goal->g << "h:"<<
   // H_goal->h<<std::endl;
 
-  if (is_goal) {
-    // export_solution_from_HNode(H_goal,"solution_to_" +
-    // std::to_string(solution_id)+".csv");
-    // traffic_map.print_normalized_regret_flow("incremental_flow_to_" +
-    // std::to_string(solution_id)+".csv");
-    solution_id++;
-  }
-  // if(is_goal){
-  //     learning_rate = 0.6;
-  // }else{
-  //     learning_rate = 1.2;
-  // }
-  // std::cout<<" Restarting: " << restarting_times << " "<< std::endl;
-  // std::cout<<" Restarting: " << restarting_times << " "<< H_goal->f <<" " <<
-  // H_goal->h << " " << H_goal->g << std::endl; restarting_times ++;
-
-  // if(is_goal)
-  // for (auto n: node_expaned){
-  //   while (!n->search_tree.empty()) {
-  //       delete n->search_tree.front();
-  //       n->search_tree.pop();
-  //     }
-  //     n->search_tree.push(new LNode());
-  //     // n->reordering_based_on_traffic(N,guidance_heuristic,traffic_op);
-  // }
-  // node_expaned.clear();
-
-  if (is_goal) {
-    curr_goal_node = H_goal;
-    HNode* current = H_goal;
-    soultion_node_pool.clear();
-    // restart_heap = std::priority_queue<std::pair<double,HNode*>,
-    // std::vector<std::pair<double,HNode*>>, Cmp>();
-    while (current->parent != nullptr) {
-      soultion_node_pool.push_back(current);
-      double distance_to_goal = H_goal->g - current->g;
-      double shortest_distance_to_goal = 0;
-      for (int agent_id = 0; agent_id < N; agent_id++) {
-        shortest_distance_to_goal += D.get(agent_id, current->C[agent_id]);
-      }
-      // restart_heap.push(std::make_pair(distance_to_goal/shortest_distance_to_goal,current));
-      // double random = get_random_float(MT, 0.0, 0.5);
-      // restart_heap.push(std::make_pair(
-      //     // current->current_make_span / curr_goal_node->current_make_span,
-      //     distance_to_goal / shortest_distance_to_goal, current));
-      restart_heap.push(std::make_pair(
-          current->current_make_span / curr_goal_node->current_make_span,
-          current));
-      current = current->parent;
-    }
-    // snapshot the flow map when updating solution.
-    if (traffic_op == TRAINNING_TRAFFIC || traffic_op == CONTINUE_TRANNING) {
-      traffic_map.snapshot_flow_map();
-    }
-    // export_solution_from_HNode(H_goal,"solution_to_" +
-    // std::to_string(solution_id)+".csv");
-    // traffic_map.print_normalized_regret_flow("incremental_flow_to_" +
-    // std::to_string(solution_id)+".csv"); solution_id ++;
-  }
-
-  learning_rate = 1.0;
-  // learn_priority_order(H_goal);
-  if (traffic_op == ONLINE_TRAFFIC) {
-    traffic_optimization(H_goal);
-  } else if (traffic_op == INCRE_TRAFFIC) {
-    incremental_increase_traffic(H_goal);
-  } else if (traffic_op == INCRE_TRAFFIC_WITH_TW) {
-    incremental_increase_traffic_with_time_window(H_goal);
-  } else if (traffic_op == INCRE_PLUS_ONLINE_TRAFFIC) {
-    incremental_increase_traffic_plus_traffic_op(H_goal);
-  } else if (traffic_op == REGERT_TRAFFIC || traffic_op == TRAINNING_TRAFFIC ||
-             traffic_op == LOADING_TRAFFIC || traffic_op == CONTINUE_TRANNING) {
-    // incremental_increase_traffic(H_goal);
+  if (traffic_op == PLANNING_AND_EXECUTION || traffic_op == REGERT_TRAFFIC) {
+    // solver_info(1, "updating traffic map");
     incremental_regret_and_traffic(H_goal);
+    OPEN = std::stack<HNode*>();
+    while (!restart_node->search_tree.empty()) {
+      delete restart_node->search_tree.front();
+      restart_node->search_tree.pop();
+    }
+    restart_node->search_tree.push(new LNode());
+    restart_node->reordering_based_on_traffic(N, guidance_heuristic,
+                                              traffic_op);
+    OPEN.push(restart_node);
+    node_limitation = 0;
+  } else {
+    if (is_goal) {
+      solution_id++;
+      curr_goal_node = H_goal;
+      HNode* current = H_goal;
+      soultion_node_pool.clear();
+      // restart_heap = std::priority_queue<std::pair<double,HNode*>,
+      // std::vector<std::pair<double,HNode*>>, Cmp>();
+      while (current->parent != nullptr) {
+        soultion_node_pool.push_back(current);
+        double distance_to_goal = H_goal->g - current->g;
+        double shortest_distance_to_goal = 0;
+        for (int agent_id = 0; agent_id < N; agent_id++) {
+          shortest_distance_to_goal += D.get(agent_id, current->C[agent_id]);
+        }
+        restart_heap.push(std::make_pair(
+            current->current_make_span / curr_goal_node->current_make_span,
+            current));
+        current = current->parent;
+      }
+      // snapshot the flow map when updating solution.
+      if (traffic_op == TRAINNING_TRAFFIC || traffic_op == CONTINUE_TRANNING) {
+        traffic_map.snapshot_flow_map();
+      }
+    }
+
+    learning_rate = 1.0;
+    // learn_priority_order(H_goal);
+    if (traffic_op == ONLINE_TRAFFIC) {
+      traffic_optimization(H_goal);
+    } else if (traffic_op == INCRE_TRAFFIC) {
+      incremental_increase_traffic(H_goal);
+    } else if (traffic_op == INCRE_TRAFFIC_WITH_TW) {
+      incremental_increase_traffic_with_time_window(H_goal);
+    } else if (traffic_op == INCRE_PLUS_ONLINE_TRAFFIC) {
+      incremental_increase_traffic_plus_traffic_op(H_goal);
+    } else if (traffic_op == REGERT_TRAFFIC ||
+               traffic_op == TRAINNING_TRAFFIC ||
+               traffic_op == LOADING_TRAFFIC ||
+               traffic_op == CONTINUE_TRANNING) {
+      // incremental_increase_traffic(H_goal);
+      incremental_regret_and_traffic(H_goal);
+    }
+    // clean_constraint(H_goal);
+    select_restart_node(OPEN, H_goal);
+    node_limitation = 0;
   }
-  // clean_constraint(H_goal);
-  select_restart_node(OPEN, H_goal);
-
-  node_limitation = 0;
-
   // learn_priority_order(H_goal);
+}
+
+void Planner::export_instance_starts_goals(const std::string& filename)
+{
+  std::ofstream fout(filename);
+  fout << "agent_id,start_vertex_index,goal_vertex_index\n";
+  for (int i = 0; i < N; ++i) {
+    fout << i << "," << ins->starts[i]->index << "," << ins->goals[i]->index
+         << "\n";
+  }
+  fout.close();
+}
+
+void Planner::running_traffic_optimization_for_simulation(
+    std::stack<HNode*>& OPEN, HNode* H_goal, bool is_goal)
+{
+  guidance_heuristic.initialized = true;
+  traffic_map.record_regret_cost(learning_rate);
+  traffic_map.reset_regret_cost();
+  guidance_heuristic.reset(ins);
+  guidance_heuristic.set_traffic_map(&traffic_map);
+  OPEN = std::stack<HNode*>();
+  OPEN.push(simulation_start_node);
+}
+
+void Planner::simulate_rewrite(HNode* H_from, HNode* H_to, HNode* H_goal,
+                               std::stack<HNode*>& OPEN)
+{
+  // update neighbors
+  H_from->neighbor.insert(H_to);
+
+  // Dijkstra update
+  std::queue<HNode*> Q({H_from});  // queue is sufficient
+  while (!Q.empty()) {
+    auto n_from = Q.front();
+    Q.pop();
+    for (auto n_to : n_from->neighbor) {
+      auto g_val = n_from->g + get_edge_cost(n_from->C, n_to->C);
+      if (g_val < n_to->g) {
+        if (n_to == H_goal) {
+          solver_info(1, "cost update: ", n_to->g, " -> ", g_val);
+          n_to->g = g_val;
+          n_to->f = n_to->g + n_to->h;
+          n_to->parent = n_from;
+          n_to->set_make_span(n_from->current_make_span + 1);
+          running_traffic_optimization_for_simulation(OPEN, n_to, true);
+          return;
+        }
+        n_to->g = g_val;
+        n_to->f = n_to->g + n_to->h;
+        n_to->parent = n_from;
+        n_to->set_make_span(n_from->current_make_span + 1);
+        Q.push(n_to);
+        if (H_goal != nullptr && n_to->f < H_goal->f) OPEN.push(n_to);
+      }
+    }
+  }
+}
+
+void Planner::simulate_traffic_map(HNode* H_start, uint _makespan_limit,
+                                   uint _node_limitation)
+{
+  // std::cout<<objective<<","<<traffic_op<<std::endl;
+  // solver_info(1, "start simulation...");
+  is_simulation = true;
+  traffic_map.reset();
+  guidance_heuristic.initialized = false;
+  accessed_agents.resize(N, 0);
+  accessed_times = 0;
+
+  // setup search
+  auto OPEN = std::stack<HNode*>();
+  auto EXPLORED = std::unordered_map<Config, HNode*, ConfigHasher>();
+  auto H_init = new HNode(H_start->C, D, nullptr, 0, get_h_value(H_start->C));
+  H_init->set_make_span(0);
+  OPEN.push(H_init);
+
+  uint current_node_limit = 0;
+  simulation_start_node = H_init;
+  EXPLORED[H_init->C] = H_init;
+  auto C_new = Config(N, nullptr);  // for new configuration
+  HNode* H_goal = nullptr;          // to store goal node
+
+  while (!OPEN.empty() && !is_expired(deadline)) {
+    loop_cnt += 1;
+
+    // do not pop here!
+    auto H = OPEN.top();  // high-level node
+    // low-level search end
+    if (H->search_tree.empty()) {
+      OPEN.pop();
+      continue;
+    }
+
+    // check lower bounds
+    if (H_goal != nullptr && H->f >= H_goal->f) {
+      OPEN.pop();
+      continue;
+    }
+
+    if (_node_limitation <= current_node_limit) {
+      break;
+    }
+    if (_makespan_limit <= H->current_make_span) {
+      running_traffic_optimization_for_simulation(OPEN, H_goal, true);
+      continue;
+    }
+
+    // check goal condition
+    if (H_goal == nullptr && is_same_config(H->C, ins->goals)) {
+      H_goal = H;
+      running_traffic_optimization_for_simulation(OPEN, H_goal, true);
+      continue;
+    }
+    auto L = H->search_tree.front();
+    H->search_tree.pop();
+    expand_lowlevel_tree(H, L);
+
+    // node_expaned.push_back(H);
+    // create successors at the high-level search
+    accessed_times += 1;
+    const auto res = get_new_config(H, L);
+    delete L;  // free
+    if (!res) continue;
+
+    // create new configuration
+    for (auto a : A) C_new[a->id] = a->v_next;
+
+    // there could be no regret to learn due to swap, so mark the agent
+    // accessed;
+    learning_regret_value(C_next, H->C, C_new);
+    learning_traffic_cost(H->C, C_new);
+
+    // check explored list
+    const auto iter = EXPLORED.find(C_new);
+    if (iter != EXPLORED.end()) {
+      // case found
+      simulate_rewrite(H, iter->second, H_goal, OPEN);
+      if (OPEN.size() == 1) {
+        continue;
+      } else {
+        OPEN.push(iter->second);
+      }
+    } else {
+      // insert new search node
+      const auto H_new = new HNode(
+          C_new, D, H, H->g + get_edge_cost(H->C, C_new), get_h_value(C_new));
+      H_new->set_make_span(H->current_make_span + 1);
+      EXPLORED[H_new->C] = H_new;
+      OPEN.push(H_new);
+      current_node_limit++;
+    }
+  }
+  is_simulation = false;
+  for (auto itr : EXPLORED) delete itr.second;
+}
+
+Solution Planner::solve_with_simulation(std::string& additional_info)
+{
+  solver_info(1, "start search");
+  num_of_nodes_generated = 0;
+  guidance_heuristic.setup(ins);
+  // setup agents
+  for (auto i = 0; i < N; ++i) A[i] = new Agent(i);
+
+  // setup search
+  auto OPEN = std::stack<HNode*>();
+  auto EXPLORED = std::unordered_map<Config, HNode*, ConfigHasher>();
+  // insert initial node, 'H': high-level node
+  auto H_init = new HNode(ins->starts, D, nullptr, 0, get_h_value(ins->starts));
+  H_init->set_make_span(0);
+  num_of_nodes_generated = 1;
+  H_init->node_id = num_of_nodes_generated;
+  num_of_nodes_generated++;
+  OPEN.push(H_init);
+  EXPLORED[H_init->C] = H_init;
+
+  restart_node = H_init;
+  std::vector<Config> solution;
+  auto C_new = Config(N, nullptr);  // for new configuration
+  HNode* H_goal = nullptr;          // to store goal node
+
+  uint current_traffic_makespan = 10;
+  simulate_traffic_map(H_init, simulation_make_span_limitation,
+                       simulation_nodes_limiatation);
+
+  while (!OPEN.empty() && !is_expired(deadline)) {
+    loop_cnt += 1;
+
+    // do not pop here!
+    auto H = OPEN.top();  // high-level node
+
+    // low-level search end
+    if (H->search_tree.empty()) {
+      OPEN.pop();
+      continue;
+    }
+
+    // check lower bounds
+    if (H_goal != nullptr && H->f >= H_goal->f) {
+      OPEN.pop();
+      continue;
+    }
+
+    // check goal condition
+    if (H_goal == nullptr && is_same_config(H->C, ins->goals)) {
+      H_goal = H;
+      solver_info(1, "found solution, cost: hahah ", H->g);
+      if (objective == OBJ_NONE) break;
+      continue;
+    }
+
+    if (H->current_make_span > current_traffic_makespan) {
+      current_traffic_makespan += 10;
+      simulate_traffic_map(H, simulation_make_span_limitation,
+                           simulation_nodes_limiatation);
+    }
+
+    auto L = H->search_tree.front();
+    H->search_tree.pop();
+    expand_lowlevel_tree(H, L);
+    node_expaned.push_back(H);
+    // create successors at the high-level search
+    accessed_times += 1;
+    const auto res = get_new_config(H, L);
+    delete L;  // free
+    if (!res) continue;
+
+    // create new configuration
+    for (auto a : A) C_new[a->id] = a->v_next;
+
+    // check explored list
+    const auto iter = EXPLORED.find(C_new);
+    if (iter != EXPLORED.end()) {
+      // case found
+      simulate_rewrite(H, iter->second, H_goal, OPEN);
+      // re-insert or random-restart
+      auto H_insert = (MT != nullptr && get_random_float(MT) >= RESTART_RATE)
+                          ? iter->second
+                          : H_init;
+      if (H_insert->g == 0) {
+        current_traffic_makespan = 10;
+        simulate_traffic_map(H, simulation_make_span_limitation,
+                             simulation_nodes_limiatation);
+      }
+      if (H_goal == nullptr || H_insert->f < H_goal->f) {
+        OPEN.push(H_insert);
+      }
+    } else {
+      // insert new search node
+      const auto H_new = new HNode(
+          C_new, D, H, H->g + get_edge_cost(H->C, C_new), get_h_value(C_new));
+      H_new->set_make_span(H->current_make_span + 1);
+      EXPLORED[H_new->C] = H_new;
+      if (H_goal == nullptr || H_new->f < H_goal->f) {
+        OPEN.push(H_new);
+      }
+    }
+  }
+
+  // backtrack
+  if (H_goal != nullptr) {
+    auto H = H_goal;
+    while (H != nullptr) {
+      solution.push_back(H->C);
+      H = H->parent;
+    }
+    std::reverse(solution.begin(), solution.end());
+  }
+
+  // print result
+  if (H_goal != nullptr && OPEN.empty()) {
+    solver_info(1, "solved optimally, objective: ", objective);
+  } else if (H_goal != nullptr) {
+    solver_info(1, "solved sub-optimally, objective: ", objective);
+  } else if (OPEN.empty()) {
+    solver_info(1, "no solution");
+  } else {
+    solver_info(1, "timeout");
+  }
+
+  // logging
+  additional_info +=
+      "optimal=" + std::to_string(H_goal != nullptr && OPEN.empty()) + "\n";
+  additional_info += "objective=" + std::to_string(objective) + "\n";
+  additional_info += "loop_cnt=" + std::to_string(loop_cnt) + "\n";
+  additional_info += "num_node_gen=" + std::to_string(EXPLORED.size()) + "\n";
+
+  // memory management
+  for (auto a : A) delete a;
+  for (auto itr : EXPLORED) delete itr.second;
+
+  return solution;
+}
+
+HNode* Planner::planning_next_actions(
+    std::unordered_map<Config, HNode*, ConfigHasher>& EXPLORED,
+    std::stack<HNode*>& OPEN, HNode** H_goal, HNode** curr_config,
+    bool continue_search, double time_limits, uint curr_makespan)
+{
+  solver_info(1, "Start Searching for next");
+  // insert initial node, 'H': high-level node
+
+  HNode* H_init = *curr_config;
+  if (!continue_search) {
+    OPEN = std::stack<HNode*>();
+    OPEN.push(H_init);
+  }
+  restart_node = H_init;
+  auto C_new = Config(N, nullptr);  // for new configuration
+
+  while (!OPEN.empty() && elapsed_ms(deadline) <= time_limits) {
+    loop_cnt += 1;
+
+    // do not pop here!
+    auto H = OPEN.top();  // high-level node
+
+    // low-level search end
+    if (H->search_tree.empty()) {
+      OPEN.pop();
+      continue;
+    }
+
+    // check lower bounds
+    if ((*H_goal) != nullptr && H->f >= (*H_goal)->f) {
+      OPEN.pop();
+      running_traffic_optimization(OPEN, H, false);
+      continue;
+    }
+
+    if ((*H_goal) != nullptr) {
+      node_limitation++;
+      // std::cout<<" hahfhsdfhshfdsahfdshf"<<std::endl;
+      if (node_limitation >
+          ((*H_goal)->current_make_span - restart_node->current_make_span) *
+              10) {
+        if (traffic_op != NONE && traffic_op != PRE_TRAFFIC) {
+          running_traffic_optimization(OPEN, H, false);
+        }
+      }
+    }
+    if ((*H_goal) == nullptr && is_same_config(H->C, ins->goals)) {
+      (*H_goal) = H;
+      solver_info(1, "found solution, cost: ", H->g);
+      if (objective == OBJ_NONE) break;
+      running_traffic_optimization(OPEN, (*H_goal), true);
+      continue;
+    }
+
+    auto L = H->search_tree.front();
+    H->search_tree.pop();
+    expand_lowlevel_tree(H, L);
+
+    node_expaned.push_back(H);
+    // create successors at the high-level search
+    accessed_times += 1;
+    const auto res = get_new_config(H, L);
+    delete L;  // free
+    if (!res) continue;
+
+    // create new configuration
+    for (auto a : A) C_new[a->id] = a->v_next;
+
+    // there could be no regret to learn due to swap, so mark the agent
+    // accessed;
+    learning_regret_value(C_next, H->C, C_new);
+    learning_traffic_cost(H->C, C_new);
+
+    // check explored list
+    const auto iter = EXPLORED.find(C_new);
+    if (iter != EXPLORED.end()) {
+      // case found
+      rewrite(H, iter->second, (*H_goal), OPEN);
+      if (OPEN.size() == 1) {
+        continue;
+      }
+      // re-insert or random-restart
+      auto H_insert = (MT != nullptr && get_random_float(MT) >= RESTART_RATE)
+                          ? iter->second
+                          : H_init;
+      OPEN.push(H_insert);
+
+    } else {
+      // insert new search node
+      const auto H_new = new HNode(
+          C_new, D, H, H->g + get_edge_cost(H->C, C_new), get_h_value(C_new));
+      H_new->set_make_span(H->current_make_span + 1);
+      H_new->node_id = num_of_nodes_generated;
+      // H_new->reordering_based_on_traffic(N,guidance_heuristic);
+      EXPLORED[H_new->C] = H_new;
+      OPEN.push(H_new);
+      num_of_nodes_generated++;
+    }
+  }
+
+  if ((*H_goal) != nullptr) {
+    auto H = (*H_goal);
+    if (H != nullptr && H->current_make_span == curr_makespan) {
+      return H;
+    }
+    while (H != nullptr) {
+      H = H->parent;
+      if (H != nullptr && H->current_make_span == curr_makespan) {
+        // found a valid action.
+        return H;
+      }
+    }
+  }
+  return nullptr;
+}
+
+Solution Planner::planning_and_execution(std::string& additional_info)
+{
+  // std::cout<<objective<<","<<traffic_op<<std::endl;
+  solver_info(1, "start planning and execution");
+  accessed_agents.resize(N, 0);
+  accessed_times = 0;
+  HNode* H_goal = nullptr;
+  std::vector<Config> solution;
+  // setup agents
+  for (auto i = 0; i < N; ++i) A[i] = new Agent(i);
+  // setup search
+  auto OPEN = std::stack<HNode*>();
+  auto EXPLORED = std::unordered_map<Config, HNode*, ConfigHasher>();
+  guidance_heuristic.setup(ins);
+
+  auto H_start =
+      new HNode(ins->starts, D, nullptr, 0, get_h_value(ins->starts));
+  bool reach_goal = false;
+  bool continous_search = false;
+  double planning_time = 1000;
+  uint makespan = 0;
+  auto config = H_start;
+  while (!reach_goal && !is_expired(deadline)) {
+    config = planning_next_actions(
+        EXPLORED, OPEN, &H_goal, &config, continous_search,
+        deadline->elapsed_ms() + planning_time, makespan);
+    std::cout << makespan << std::endl;
+    if (config == nullptr) {
+      // add waiting if no result found.
+      std::cout << "adding null" << std::endl;
+      if (solution.empty()) {
+        solution.push_back(H_start->C);
+      }
+      solution.push_back(solution.back());
+      continous_search = true;
+    } else {
+      if (is_same_config(config->C, ins->goals)) {
+        solution.push_back(config->C);
+        reach_goal = true;
+      } else {
+        solution.push_back(config->C);
+        continous_search = false;
+        makespan++;
+      }
+    }
+  }
+  // std::cout << " okay here we go " << std::endl;
+  // memory management
+  for (auto a : A) delete a;
+  for (auto itr : EXPLORED) delete itr.second;
+
+  return solution;
 }
 
 Solution Planner::solve(std::string& additional_info)
 {
+  if (traffic_op == SIMULATION_TRAFFIC) {
+    return solve_with_simulation(additional_info);
+  }
+  if (traffic_op == PLANNING_AND_EXECUTION) {
+    return planning_and_execution(additional_info);
+  }
   // std::cout<<objective<<","<<traffic_op<<std::endl;
   solver_info(1, "start search");
   restart_heap =
@@ -824,10 +1274,7 @@ Solution Planner::solve(std::string& additional_info)
   std::vector<Config> solution;
   auto C_new = Config(N, nullptr);  // for new configuration
   HNode* H_goal = nullptr;          // to store goal node
-  global_goal = H_goal;
-
   HNode* H_last = nullptr;
-
   // DFS
   if (printing_tree) {
     std::cout << "version: 1.4.0\n";
@@ -861,21 +1308,19 @@ Solution Planner::solve(std::string& additional_info)
     // traffic_map.remove_visited_node_and_renormalized(D.get_expended_vertex());
   }
 
-  // double a = guidance_heuristic.get_regret_heuristic(42, 581);
-  // double b = guidance_heuristic.get_regret_heuristic(42, ins->goals[42]->id);
-  // double c = guidance_heuristic.get_regret_heuristic(42, 580);
-  // double d = guidance_heuristic.get_regret_heuristic(42, 582);
-  // double e = guidance_heuristic.get_regret_heuristic(42, 579);
-  // double f = guidance_heuristic.get_regret_heuristic(42, 578);
-  // double g = guidance_heuristic.get_regret_heuristic(42, 607);
-  //   double h = guidance_heuristic.get_regret_heuristic(42, 606);
-  // double aaaa = 0;
+  double current_time = 500;
   while (!OPEN.empty() && !is_expired(deadline)) {
     // if(OPEN.size() == 1){
     //   for(auto nn: EXPLORED){
     //     nn.second->reordering_based_on_traffic(N,guidance_heuristic);
     //   }
     // }
+    if (deadline->elapsed_ms() > current_time) {
+      traffic_map.print_normalized_regret_flow(
+          "normalized_flow_at_" + std::to_string((int)current_time) + "ms.csv");
+      current_time += 500;
+    }
+
     if (traffic_op == PRE_TRAFFIC && !guidance_heuristic.initialized) {
       break;
     }
@@ -905,7 +1350,8 @@ Solution Planner::solve(std::string& additional_info)
         node_limitation++;
         // std::cout<<" hahfhsdfhshfdsahfdshf"<<std::endl;
         if (node_limitation >
-            (H->current_make_span - restart_node->current_make_span) * 10) {
+            (H_goal->current_make_span - restart_node->current_make_span) *
+                10) {
           if (traffic_op != NONE && traffic_op != PRE_TRAFFIC) {
             running_traffic_optimization(OPEN, H, false);
           }
@@ -1077,6 +1523,7 @@ Solution Planner::solve(std::string& additional_info)
     solver_info(1, "timeout");
   }
 
+  export_instance_starts_goals("instance_starts_goals.csv");
   // logging
   additional_info +=
       "optimal=" + std::to_string(H_goal != nullptr && OPEN.empty()) + "\n";
@@ -1150,7 +1597,8 @@ void Planner::rewrite(HNode* H_from, HNode* H_to, HNode* H_goal,
           std::cout << "   f_value: " << n_to->f << std::endl;
         }
         if (n_to == H_goal) {
-          if (traffic_op != NONE && traffic_op != PRE_TRAFFIC) {
+          if (traffic_op != NONE && traffic_op != PRE_TRAFFIC &&
+              traffic_op != TRAINNING_TRAFFIC) {
             solver_info(1, "cost update: ", n_to->g, " -> ", g_val);
             n_to->g = g_val;
             n_to->f = n_to->g + n_to->h;
@@ -1326,7 +1774,8 @@ bool Planner::funcPIBT(Agent* ai)
       }
     }
   } else if (traffic_op == REGERT_TRAFFIC || traffic_op == TRAINNING_TRAFFIC ||
-             traffic_op == LOADING_TRAFFIC || traffic_op == CONTINUE_TRANNING) {
+             traffic_op == LOADING_TRAFFIC || traffic_op == CONTINUE_TRANNING ||
+             traffic_op == PLANNING_AND_EXECUTION) {
     if (!guidance_heuristic.initialized) {
       std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
                 [&](Vertex* const v, Vertex* const u) {
@@ -1337,12 +1786,36 @@ bool Planner::funcPIBT(Agent* ai)
       std::sort(
           C_next[i].begin(), C_next[i].begin() + K + 1,
           [&](Vertex* const v, Vertex* const u) {
-            // double a1 = guidance_heuristic.get_regret_heuristic(i, v->id) +
-            // traffic_map.get_regret_cost(ai->v_now->index,v->index) +
-            // tie_breakers[v->id]; double a2 =
-            // guidance_heuristic.get_regret_heuristic(i, u->id) +
-            // traffic_map.get_regret_cost(ai->v_now->index,u->index) +
-            // tie_breakers[u->id];
+            double a1 = guidance_heuristic.get_regret_heuristic(i, v->id) +
+                        tie_breakers[v->id];
+            double a2 = guidance_heuristic.get_regret_heuristic(i, u->id) +
+                        tie_breakers[u->id];
+            return a1 < a2;
+          });
+    }
+  } else if (traffic_op == SIMULATION_TRAFFIC) {
+    if (is_simulation) {
+      if (!guidance_heuristic.initialized) {
+        std::sort(C_next[i].begin(), C_next[i].begin() + K + 1,
+                  [&](Vertex* const v, Vertex* const u) {
+                    return D.get(i, v) + tie_breakers[v->id] <
+                           D.get(i, u) + tie_breakers[u->id];
+                  });
+      } else {
+        std::sort(
+            C_next[i].begin(), C_next[i].begin() + K + 1,
+            [&](Vertex* const v, Vertex* const u) {
+              double a1 = guidance_heuristic.get_regret_heuristic(i, v->id) +
+                          tie_breakers[v->id];
+              double a2 = guidance_heuristic.get_regret_heuristic(i, u->id) +
+                          tie_breakers[u->id];
+              return a1 < a2;
+            });
+      }
+    } else {
+      std::sort(
+          C_next[i].begin(), C_next[i].begin() + K + 1,
+          [&](Vertex* const v, Vertex* const u) {
             double a1 = guidance_heuristic.get_regret_heuristic(i, v->id) +
                         tie_breakers[v->id];
             double a2 = guidance_heuristic.get_regret_heuristic(i, u->id) +
@@ -1456,8 +1929,19 @@ bool Planner::is_swap_required(const uint pusher, const uint puller,
     } else if (traffic_op == REGERT_TRAFFIC ||
                traffic_op == TRAINNING_TRAFFIC ||
                traffic_op == LOADING_TRAFFIC ||
-               traffic_op == CONTINUE_TRANNING) {
+               traffic_op == CONTINUE_TRANNING ||
+               traffic_op == PLANNING_AND_EXECUTION) {
       if (guidance_heuristic.initialized) {
+        return is_swap_required_gudiance_regret_version(
+            pusher, puller, v_pusher_origin, v_puller_origin);
+      }
+    } else if (traffic_op == SIMULATION_TRAFFIC) {
+      if (is_simulation) {
+        if (guidance_heuristic.initialized) {
+          return is_swap_required_gudiance_regret_version(
+              pusher, puller, v_pusher_origin, v_puller_origin);
+        }
+      } else {
         return is_swap_required_gudiance_regret_version(
             pusher, puller, v_pusher_origin, v_puller_origin);
       }
