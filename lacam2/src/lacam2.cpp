@@ -18,10 +18,11 @@ static std::string filename_stem(const std::string& path)
 Solution solve(const Instance& ins, std::string& additional_info,
                const int verbose, const Deadline* deadline, std::mt19937* MT,
                const Objective objective, const Traffic_OP traffic,
-               const std::string map_name, const float restart_rate)
+               const std::string map_name, const float restart_rate,
+               const int planning_time)
 {
-  auto planner =
-      Planner(&ins, deadline, MT, verbose, objective, traffic, restart_rate);
+  auto planner = Planner(&ins, deadline, MT, verbose, objective, traffic,
+                         restart_rate, planning_time);
   if (traffic == LOADING_TRAFFIC || traffic == CONTINUE_TRANNING) {
     std::string base = filename_stem(map_name);
     if (std::filesystem::exists(base + ".csv")) {

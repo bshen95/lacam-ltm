@@ -187,6 +187,18 @@ struct TrafficMap {
     PIBT_edge_Regret[edge_idx] += regret_value;
   }
 
+  void increase_regret_single_step(int v_from, int v_to)
+  {
+    // remove path from traffic map
+    visited[v_from] = true;
+    visited[v_to] = true;
+    if (v_from == v_to) {
+      PIBT_vertex_Regret[v_to]++;
+    }  // Skip if the same vertex
+    int e_index = edge_waiting_index(v_from, v_to);
+    PIBT_edge_Regret[e_index]++;
+  }
+
   std::tuple<double, double> get_recorded_regret_cost(uint a, uint b) const
   {
     if (a == b) return {0, 0};
@@ -238,18 +250,6 @@ struct TrafficMap {
     }
   }
 
-  void increase_regret_single_step(int v_from, int v_to)
-  {
-    // remove path from traffic map
-    visited[v_from] = true;
-    visited[v_to] = true;
-    if (v_from == v_to) {
-      PIBT_vertex_Regret[v_to]++;
-    }  // Skip if the same vertex
-    int e_index = edge_waiting_index(v_from, v_to);
-    PIBT_edge_Regret[e_index]++;
-  }
-
   void record_regret_cost(double learning_rate)
   {
     std::unordered_set<std::pair<int, int>, EdgePairHash> visited_edge;
@@ -275,24 +275,6 @@ struct TrafficMap {
         PIBT_regret_flow[edge_idx] += PIBT_edge_Regret[revserse_edge_idx] +
                                       PIBT_vertex_Regret[edge.first];
       }
-      // if (PIBT_regret_flow[edge_idx] < 0) {
-      //   std::cout << " Error: negative regret flow on edge from " <<
-      //   edge.first
-      //             << " to " << edge.second << std::endl;
-      //   std::cout << " Error: negative regret flow on edge from " <<
-      //   edge.first
-      //             << " to " << edge.second << std::endl;
-      //   std::cout << " Error: negative regret flow on edge from " <<
-      //   edge.first
-      //             << " to " << edge.second << std::endl;
-      //   std::cout << " Error: negative regret flow on edge from " <<
-      //   edge.first
-      //             << " to " << edge.second << std::endl;
-      // }
-      // incremental_flow[edge_idx] += (t1 + t2);
-      // std::cout<< " Adding regret cost on edge from "<< edge.first << " to
-      // "<< edge.second << " with cost "
-      // << (t1 + t2) << std::endl;
     }
 
     apply_min_max_normalization(PIBT_regret_flow);
@@ -312,6 +294,36 @@ struct TrafficMap {
     // normalized_PIBT_regret_flow = w;
     // // print_normalized_regret_flow("after_traffic.csv");
     // bool a = 0;
+  }
+
+  //   visited[v_from] = true;
+  // visited[v_to] = true;
+  // if (v_from == v_to) {
+  //   PIBT_vertex_Regret[v_to]++;
+  // }  // Skip if the same vertex
+  // int e_index = edge_waiting_index(v_from, v_to);
+  // PIBT_edge_Regret[e_index]++;
+
+  void construct_traffic_from_cache(
+      uint starting_makespan, uint ending_makespan,
+      const std::vector<std::unordered_map<std::pair<int, int>, int, PairHash>>&
+          traffic_cache_map)
+  {
+    reset_regret_cost();
+    std::fill(PIBT_regret_flow.begin(), PIBT_regret_flow.end(), 0);
+    for (int i = starting_makespan; i <= ending_makespan; i++) {
+      const auto& traffic_map = traffic_cache_map[i];
+      for (const auto& entry : traffic_map) {
+        visited[entry.first.first] = true;
+        visited[entry.first.second] = true;
+        if (entry.first.first == entry.first.second) {
+          PIBT_vertex_Regret[entry.first.second] += entry.second;
+        }
+        int e_index = edge_waiting_index(entry.first.first, entry.first.second);
+        PIBT_edge_Regret[e_index] += entry.second;
+      }
+    }
+    record_regret_cost(1.0);
   }
 
   void reset()

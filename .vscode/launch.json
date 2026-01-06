@@ -8,10 +8,10 @@
             "program": "${workspaceFolder}/build/main",
             "args": [
                 "-v", "3",
-                "-m", "assets/random-32-32-20.map",
+                "-m", "scripts/map/warehouse-10-20-10-2-1.map",
                 // "-i", "scripts/scen/scen-random/random-32-32-20-random-1.scen",
                 "-t", "5000",
-                "-N", "40",
+                "-N", "2000",
                 "--objective", "2",
                 "-s", "1",
                 "--traffic", "12",

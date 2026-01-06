@@ -24,6 +24,13 @@ using Time = std::chrono::steady_clock;
 
 void info(const int level, const int verbose);
 
+struct PairHash {
+  size_t operator()(const std::pair<int, int>& p) const
+  {
+    return std::hash<long long>()(((long long)p.first << 32) ^ p.second);
+  }
+};
+
 template <typename Head, typename... Tail>
 void info(const int level, const int verbose, Head&& head, Tail&&... tail)
 {

@@ -153,7 +153,7 @@ struct Planner {
   const Objective objective;
   const Traffic_OP traffic_op;
   const float RESTART_RATE;  // random restart
-
+  const int planning_time;
   // solver utils
   const uint N;       // number of agents
   const uint V_size;  // number o vertices
@@ -177,6 +177,15 @@ struct Planner {
   std::priority_queue<std::pair<double, HNode*>,
                       std::vector<std::pair<double, HNode*>>, Cmp>
       restart_heap;
+
+  std::vector<std::unordered_map<std::pair<int, int>, int, PairHash>>
+      traffic_cache;
+
+  bool use_global_traffic_cache = true;
+
+  uint restart_makespan = 0;
+  uint reconstruct_makespan = 20;
+
   HNode* global_goal_nodes;
 
   uint best_makespan = 0;
@@ -210,6 +219,7 @@ struct Planner {
   uint accessed_times;
 
   bool swap_based_on_original_distance = false;
+  uint max_makespan = 0;
 
   std::vector<std::vector<uint>> revised_path;
   std::vector<std::vector<uint>> checked_path;
@@ -243,7 +253,8 @@ struct Planner {
           const int _verbose = 0,
           // other parameters
           const Objective _objective = OBJ_NONE,
-          const Traffic_OP _traffic = NONE, const float _restart_rate = 0.001);
+          const Traffic_OP _traffic = NONE, const float _restart_rate = 0.001,
+          const int _planning_time = 1000);
   ~Planner();
 
   Solution solve_with_simulation(std::string& additional_info);
@@ -293,13 +304,14 @@ struct Planner {
 
   bool is_swap_possible(Vertex* v_pusher_origin, Vertex* v_puller_origin);
 
-  void clean_constraint(HNode* H_goal);
+  void clean_constraint(std::stack<HNode*>& OPEN);
   // traffic op
 
   void learning_regret_value(
       std::vector<std::array<Vertex*, 5>>& C_next_actions, const Config& C_curr,
-      Config& C_next);
-  void learning_traffic_cost(const Config& C_from, const Config& C_to);
+      Config& C_next, uint current_time_step);
+  void learning_traffic_cost(const Config& C_from, const Config& C_to,
+                             uint current_time_step);
 
   void running_traffic_optimization_for_simulation(std::stack<HNode*>& OPEN,
                                                    HNode* H_goal, bool is_goal);
@@ -307,7 +319,7 @@ struct Planner {
   void running_traffic_optimization(std::stack<HNode*>& OPEN, HNode* H_goal,
                                     bool is_goal);
 
-  void incremental_regret_and_traffic(HNode* H_goal);
+  void incremental_regret_and_traffic(uint start_makespan, HNode* H_goal);
   void incremental_increase_traffic_with_time_window(HNode* H_goal);
   void incremental_increase_traffic(HNode* H_goal);
   void incremental_increase_traffic_plus_traffic_op(HNode* H_goal);

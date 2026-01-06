@@ -27,7 +27,7 @@ bool is_feasible_solution(const Instance& ins, const Solution& solution,
       if (v_i_from != v_i_to &&
           std::find(v_i_to->neighbor.begin(), v_i_to->neighbor.end(),
                     v_i_from) == v_i_to->neighbor.end()) {
-        info(1, verbose, "invalid move");
+        info(1, verbose, "invalid move " + std::to_string(t));
         return false;
       }
 

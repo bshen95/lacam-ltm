@@ -49,6 +49,10 @@ int main(int argc, char* argv[])
         if (std::find(C.begin(), C.end(), value) != C.end()) return value;
         return std::string("0");
       });
+  program.add_argument("-p", "--planning_time")
+      .help("planning time in ms")
+      .default_value(std::string("1000"));
+
   program.add_argument("-r", "--restart_rate")
       .help("restart rate")
       .default_value(std::string("0.001"));
@@ -80,6 +84,9 @@ int main(int argc, char* argv[])
   const auto traffic =
       static_cast<Traffic_OP>(std::stoi(program.get<std::string>("traffic")));
   const auto restart_rate = std::stof(program.get<std::string>("restart_rate"));
+  const auto planning_time =
+      std::stoi(program.get<std::string>("planning_time"));
+
   if (!ins.is_valid(1)) return 1;
 
   if (generate_instance) {
@@ -90,8 +97,9 @@ int main(int argc, char* argv[])
   // solve
   auto additional_info = std::string("");
   const auto deadline = Deadline(time_limit_sec * 1000);
-  const auto solution = solve(ins, additional_info, verbose - 1, &deadline, &MT,
-                              objective, traffic, map_name, restart_rate);
+  const auto solution =
+      solve(ins, additional_info, verbose - 1, &deadline, &MT, objective,
+            traffic, map_name, restart_rate, planning_time);
   const auto comp_time_ms = deadline.elapsed_ms();
 
   // failure
