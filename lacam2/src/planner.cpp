@@ -66,7 +66,8 @@ HNode::~HNode()
 Planner::Planner(const Instance* _ins, const Deadline* _deadline,
                  std::mt19937* _MT, const int _verbose,
                  const Objective _objective, const Traffic_OP _traffic,
-                 const float _restart_rate, const int _planning_time)
+                 const float _restart_rate, const int _planning_time,
+                 const int _commit_steps)
     : ins(_ins),
       deadline(_deadline),
       MT(_MT),
@@ -75,6 +76,7 @@ Planner::Planner(const Instance* _ins, const Deadline* _deadline,
       traffic_op(_traffic),
       RESTART_RATE(_restart_rate),
       planning_time(_planning_time),
+      commit_steps(_commit_steps),
       N(ins->N),
       V_size(ins->G.size()),
       D(DistTable(ins)),
@@ -1160,20 +1162,12 @@ HNode* Planner::planning_next_actions(
 
   if ((*H_goal) != nullptr) {
     auto H = (*H_goal);
-    if (H != nullptr && H->current_make_span == curr_makespan) {
-      // if (is_same_config(H->parent->C, (*curr_config)->C)) {
-      //   std::cout << " Planning next action: already at goal " << std::endl;
-      // }
-      return H;
+    if (H->current_make_span <= curr_makespan) {
+      return *H_goal;
     }
     while (H != nullptr) {
       H = H->parent;
       if (H != nullptr && H->current_make_span == curr_makespan) {
-        // if (!is_same_config(H->parent->C, (*curr_config)->C)) {
-        //   std::cout << " Planning next action: already at goal " <<
-        //   std::endl;
-        // }
-        // found a valid action.
         return H;
       }
     }
@@ -1199,36 +1193,47 @@ Solution Planner::planning_and_execution(std::string& additional_info)
 
   auto H_start =
       new HNode(ins->starts, D, nullptr, 0, get_h_value(ins->starts));
-  bool reach_goal = false;
   bool continous_search = false;
-  uint makespan = 1;
   auto curr_config = H_start;
+  // std::cout << " Planning and Execution with commit steps: " << commit_steps
+  //           << std::endl;
+  uint commited_makespan = commit_steps;
   auto returned_config = H_start;
   if (solution.empty()) {
     solution.push_back(H_start->C);
   }
-  while (!reach_goal && !is_expired(deadline)) {
+  while (!is_expired(deadline)) {
     returned_config = planning_next_actions(
         EXPLORED, OPEN, &H_goal, &curr_config, continous_search,
-        deadline->elapsed_ms() + planning_time, makespan);
+        deadline->elapsed_ms() + planning_time * commit_steps,
+        commited_makespan);
     // std::cout << makespan << std::endl;
     if (returned_config == nullptr) {
       // add waiting if no result found.
-      std::cout << " no solution found for time step " << makespan
-                << ", adding wait action." << std::endl;
-      solution.push_back(solution.back());
+      for (int i = 0; i < commit_steps; i++) {
+        solution.push_back(solution.back());
+      }
       continous_search = true;
     } else {
-      if (is_same_config(returned_config->C, ins->goals)) {
-        solution.push_back(returned_config->C);
-        curr_config = returned_config;
-        reach_goal = true;
-      } else {
-        solution.push_back(returned_config->C);
-        curr_config = returned_config;
-        continous_search = false;
-        makespan++;
+      int last_commited_makespan = commited_makespan - commit_steps;
+      std::vector<HNode*> path_to_commit = std::vector<HNode*>();
+      auto tmp_config = returned_config;
+      while (tmp_config->current_make_span != last_commited_makespan) {
+        path_to_commit.push_back(tmp_config);
+        tmp_config = tmp_config->parent;
       }
+      std::reverse(path_to_commit.begin(), path_to_commit.end());
+      for (auto step_node : path_to_commit) {
+        solution.push_back(step_node->C);
+      }
+
+      if (is_same_config(returned_config->C, ins->goals)) {
+        break;
+      } else {
+        continous_search = false;
+        commited_makespan = commited_makespan + commit_steps;
+      }
+      curr_config = returned_config;
     }
   }
   // std::cout << " okay here we go " << std::endl;

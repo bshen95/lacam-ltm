@@ -154,6 +154,7 @@ struct Planner {
   const Traffic_OP traffic_op;
   const float RESTART_RATE;  // random restart
   const int planning_time;
+  const int commit_steps;
   // solver utils
   const uint N;       // number of agents
   const uint V_size;  // number o vertices
@@ -254,7 +255,7 @@ struct Planner {
           // other parameters
           const Objective _objective = OBJ_NONE,
           const Traffic_OP _traffic = NONE, const float _restart_rate = 0.001,
-          const int _planning_time = 1000);
+          const int _planning_time = 1000, const int _commit_steps = 1);
   ~Planner();
 
   Solution solve_with_simulation(std::string& additional_info);

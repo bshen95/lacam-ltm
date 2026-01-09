@@ -52,6 +52,9 @@ int main(int argc, char* argv[])
   program.add_argument("-p", "--planning_time")
       .help("planning time in ms")
       .default_value(std::string("1000"));
+  program.add_argument("-c", "--commit_steps")
+      .help("commit steps")
+      .default_value(std::string("1"));
 
   program.add_argument("-r", "--restart_rate")
       .help("restart rate")
@@ -86,7 +89,7 @@ int main(int argc, char* argv[])
   const auto restart_rate = std::stof(program.get<std::string>("restart_rate"));
   const auto planning_time =
       std::stoi(program.get<std::string>("planning_time"));
-
+  const auto commit_steps = std::stoi(program.get<std::string>("commit_steps"));
   if (!ins.is_valid(1)) return 1;
 
   if (generate_instance) {
@@ -99,7 +102,7 @@ int main(int argc, char* argv[])
   const auto deadline = Deadline(time_limit_sec * 1000);
   const auto solution =
       solve(ins, additional_info, verbose - 1, &deadline, &MT, objective,
-            traffic, map_name, restart_rate, planning_time);
+            traffic, map_name, restart_rate, planning_time, commit_steps);
   const auto comp_time_ms = deadline.elapsed_ms();
 
   // failure
