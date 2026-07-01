@@ -43,7 +43,7 @@ struct TrafficMap {
       : G(_G),
         num_of_agents(_num_of_agents),
         width(_G->width),
-        height(_G->width)
+        height(_G->height)
   {
     // int total_edges = (width - 1) * height + width * (height - 1);
     // edge_flow.resize(total_edges, 0.0);

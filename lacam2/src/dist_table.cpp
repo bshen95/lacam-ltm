@@ -37,7 +37,7 @@ uint DistTable::get(uint i, uint v_id)
    */
 
   while (!OPEN[i].empty()) {
-    auto&& n = OPEN[i].front();
+    auto n = OPEN[i].front();
     OPEN[i].pop();
     const int d_n = table[i][n->id];
     // expended_vertex[n->index] = true; 
