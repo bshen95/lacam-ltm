@@ -10,12 +10,12 @@ Bojie Shen, Yue Zhang, Zhe Chen, Daniel Harabor
 
 ## Key Features
 
-- **Lightweight Traffic Map (LTM):** A dynamic directed weighted graph that captures congestion from PIBT execution history (committed & blocked actions), updated online during search — no expensive offline precomputation required.
-- **Frequent Restarts:** Modified LaCAM\* with early termination conditions and configurable node budgets, enabling rapid iterative improvement.
-- **Two MAPF Settings:**
-  - *One-shot MAPF* — given a fixed time budget, return the best solution found.
-  - *Planning & Execution MAPF* — repeatedly plan under short time windows while committing actions for execution.
-- **Superior Anytime Performance:** Faster convergence and higher solution quality than LaCAM\*+TO (Traffic Optimisation), LaCAM\*+SUO (Space Utilization Optimisation), and PIE.
+- **Lightweight Traffic Map (LTM):** a dynamic directed weighted graph built **online during search** from PIBT's execution history (committed & blocked actions) — no offline precomputation, no training data. PIBT's distance heuristic is replaced by distances on the live LTM.
+- **Shared anytime loop:** run bounded LaCAM\* guided by the current LTM → keep the best solution → update the LTM from PIBT history → select a restart node → repeat.
+- **Two MAPF settings, same loop:**
+  - *One-shot MAPF* — a single time budget; the first iteration is plain LaCAM\*, then the solver restarts (mostly from the root) to drive final solution quality as high as possible.
+  - *Planning-and-execution MAPF* — repeated short planning windows; each window commits the next X actions, reuses the search tree, restarts from the committed configuration, and refreshes the LTM.
+- **Superior anytime performance:** lower sum-of-loss than LaCAM\*+TO and LaCAM\*+SUO (one-shot) and than PIE (planning-and-execution), with the gap widening as agent density grows.
 
 ## Building
 
@@ -24,7 +24,7 @@ Bojie Shen, Yue Zhang, Zhe Chen, Daniel Harabor
 Clone the repository with submodules:
 
 ```sh
-git clone --recursive https://github.com/<your-username>/lacam2.git && cd lacam2
+git clone --recursive https://github.com/bshen95/lacam-ltm.git && cd lacam-ltm
 ```
 
 Build:
@@ -37,14 +37,29 @@ Alternatively, a Docker environment is available in `assets/`.
 
 ## Usage
 
-### One-shot MAPF with LTM
+### One-shot MAPF (LaCAM\* + LTM)
 
-Run with sum-of-loss optimisation and the LTM traffic mode:
+A single run with a fixed time budget; the LTM is built from scratch online and the solver keeps improving the incumbent until the deadline (`-f 7`):
 
 ```sh
-# 600 agents on random-32-32-20, 30s time limit, LTM enabled (--traffic 10)
-build/main -m scripts/map/random-32-32-20.map -t 30 -N 600 --objective 2 -v 2 --traffic 10
+# 400 agents on random-32-32-20, 30s budget, sum-of-loss objective
+build/main -m scripts/map/random-32-32-20.map \
+           -i scripts/scen/scen-random/random-32-32-20-random-1.scen \
+           -N 400 -t 30 -O 2 -f 7 -v 1 -o build/result.txt
 ```
+
+### Planning-and-execution MAPF (LaCAM\* + LTM)
+
+Repeated short planning windows (`-f 12`): each window plans for `-p` milliseconds, commits the next `-c` actions for execution, then replans from the committed configuration with a refreshed LTM. The paper evaluates window budgets E ∈ {0.1 s, 0.5 s} and commit steps X ∈ {5, 10, 20}:
+
+```sh
+# E = 0.1s planning window, commit X = 5 actions per window
+build/main -m scripts/map/random-64-64-20.map \
+           -i scripts/scen/scen-random/random-64-64-20-random-1.scen \
+           -N 800 -t 60 -O 2 -f 12 -p 100 -c 5 -v 1 -o build/result.txt
+```
+
+In this setting the run ends as soon as all agents reach their goals; `-t` only needs to be a generous upper bound (a too-small `-t` cuts execution short and yields an incomplete solution).
 
 ### Baseline LaCAM* (no traffic guidance)
 
@@ -62,54 +77,42 @@ build/main -m assets/random-32-32-20.map -N 400 -v 1
 | `-s, --seed` | Random seed | `0` |
 | `-t, --time_limit_sec` | Time limit in seconds | `3` |
 | `-O, --objective` | Objective: `0` = none, `1` = makespan, `2` = sum-of-loss | `0` |
-| `-f, --traffic` | Traffic mode (see below) | `0` |
+| `-f, --traffic` | Solver mode: `0` = LaCAM\* baseline, `7` = LTM one-shot, `12` = LTM planning-and-execution | `0` |
+| `-p, --planning_time` | Planning-and-execution only: planning window per replan, in ms | `1000` |
+| `-c, --commit_steps` | Planning-and-execution only: actions committed per window (X) | `1` |
+| `-r, --restart_rate` | Probability of restarting from the root when revisiting a configuration | `0.001` |
 | `-v, --verbose` | Verbosity level | `0` |
-| `-p, --planning_time` | Planning time budget in ms | `1000` |
-| `-c, --commit_steps` | Commitment horizon (actions to commit per window) | `1` |
-| `-r, --restart_rate` | Restart rate | `0.001` |
 | `-o, --output` | Output file path | `./build/result.txt` |
 | `-l, --log_short` | Short log format | `false` |
 | `-g, --generate_instance` | Export instance and exit | `false` |
 
-#### Traffic Modes (`--traffic`)
+Other `--traffic` values select internal/experimental guidance variants and are not part of the paper.
 
-| Value | Mode |
-|-------|------|
-| `0` | None (original LaCAM\*) |
-| `1` | Pre-traffic |
-| `2` | Online traffic |
-| `3` | Online traffic with time windows |
-| `4` | Incremental traffic |
-| `5` | Incremental traffic with time windows |
-| `6` | Incremental + online traffic |
-| `7` | Regret traffic |
-| `8` | Training traffic |
-| `9` | Loading traffic |
-| `10` | **LTM (our method)** |
+## Reproducing the Paper Experiments
 
-## Reproducing Experiments
+Both settings are evaluated on 8 grid maps from the [MAPF benchmark](https://movingai.com/benchmarks/mapf.html) with 25 random scenarios per map, sum-of-loss objective, and up to 2000 agents:
 
-### One-shot MAPF Experiments
+`random-32-32-20`, `random-64-64-20`, `empty-32-32`, `empty-48-48`, `maze-32-32-4`, `room-64-64-8`, `warehouse-10-20-10-2-1`, `warehouse-10-20-10-2-2`
 
-We evaluate on 8 grid maps from the [MAPF benchmark](https://movingai.com/benchmarks/mapf.html) with 25 random instances per map and a 30-second time limit:
+**One-shot** (Figure 1): 30-second budget per instance, e.g.
 
 ```sh
-# Run the full experiment suite
-bash larger_training.sh
+for s in $(seq 1 25); do
+  build/main -m scripts/map/empty-48-48.map \
+             -i scripts/scen/scen-random/empty-48-48-random-$s.scen \
+             -N 1000 -t 30 -O 2 -f 7 -o build/result.txt
+done
 ```
 
-### Maps Used
+**Planning-and-execution** (Figure 4): vary the window budget (`-p 100` for E = 0.1 s, `-p 500` for E = 0.5 s) and commit steps (`-c 5/10/20`), e.g.
 
-| Map | Agents |
-|-----|--------|
-| `random-32-32-20` | up to 600 |
-| `random-64-64-20` | up to 1000 |
-| `empty-32-32` | up to 600 |
-| `empty-48-48` | up to 1000 |
-| `maze-32-32-4` | up to 400 |
-| `room-64-64-8` | up to 1000 |
-| `warehouse-10-20-10-2-2` | up to 1000 |
-| `warehouse-10-20-10-2-1` | up to 1000 |
+```sh
+for s in $(seq 1 25); do
+  build/main -m scripts/map/room-64-64-8.map \
+             -i scripts/scen/scen-random/room-64-64-8-random-$s.scen \
+             -N 1200 -t 60 -O 2 -f 12 -p 100 -c 10 -o build/result.txt
+done
+```
 
 ## Visualiser
 
@@ -139,9 +142,7 @@ mapf-visualizer scripts/map/random-32-32-20.map build/result.txt
 ├── scripts/                  # Evaluation scripts (Julia), maps, scenarios
 ├── assets/                   # Sample maps, scenarios, Docker setup
 ├── tests/                    # Google Test unit tests
-├── third_party/              # argparse, googletest (submodules)
-├── training.sh               # Single-seed experiment script
-└── larger_training.sh        # Multi-seed experiment script (25 seeds)
+└── third_party/              # argparse, googletest (submodules)
 ```
 
 ## Notes
@@ -169,4 +170,3 @@ If you use this code in your research, please cite:
 ## Licence
 
 This software is released under the MIT License, see [LICENCE.txt](LICENCE.txt).
-
