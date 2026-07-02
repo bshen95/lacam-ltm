@@ -92,6 +92,11 @@ Planner::Planner(const Instance* _ins, const Deadline* _deadline,
       astar_search(&traffic_map, &ins->G),
       guidance_heuristic(&ins->G, &traffic_map, N)
 {
+  // The per-timestep traffic cache is only meaningful for
+  // planning-and-execution, where each replanning window rebuilds guidance
+  // from the committed timestep onward. All other modes use the decayed
+  // aggregate traffic map.
+  use_global_traffic_cache = (traffic_op == PLANNING_AND_EXECUTION);
 }
 
 Planner::~Planner() {}

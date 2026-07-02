@@ -182,7 +182,8 @@ struct Planner {
   std::vector<std::unordered_map<std::pair<int, int>, int, PairHash>>
       traffic_cache;
 
-  bool use_global_traffic_cache = true;
+  // set in the constructor: true only for PLANNING_AND_EXECUTION
+  bool use_global_traffic_cache = false;
 
   uint restart_makespan = 0;
   uint reconstruct_makespan = 20;
