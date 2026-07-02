@@ -1584,6 +1584,11 @@ void Planner::learning_regret_value(
     std::vector<std::array<Vertex*, 5>>& C_next_actions, const Config& C_curr,
     Config& C_next, uint current_time_step)
 {
+  if (use_global_traffic_cache && current_time_step >= traffic_cache.size()) {
+    // the search depth (make_span) is unbounded before a goal is found;
+    // grow the cache instead of indexing out of bounds
+    traffic_cache.resize(2 * current_time_step + 1);
+  }
   for (int i = 0; i < C_curr.size(); i++) {
     if (accessed_agents[i] != accessed_times) {
       // not accessed
@@ -1613,6 +1618,9 @@ void Planner::learning_regret_value(
 void Planner::learning_traffic_cost(const Config& C_from, const Config& C_to,
                                     uint current_time_step)
 {
+  if (use_global_traffic_cache && current_time_step >= traffic_cache.size()) {
+    traffic_cache.resize(2 * current_time_step + 1);
+  }
   for (int i = 0; i < N; i++) {
     if (C_from[i]->id == C_to[i]->id && C_to[i]->id == ins->goals[i]->id) {
       // skip wait at target;

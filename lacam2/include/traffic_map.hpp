@@ -1,6 +1,9 @@
 
 #pragma once
+#include <unistd.h>
+
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -184,6 +187,7 @@ struct TrafficMap {
       PIBT_vertex_Regret[b] += regret_value;
     }
     int edge_idx = edge_waiting_index(a, b);
+    if (edge_idx < 0) return;  // non-adjacent pair; avoid OOB write
     PIBT_edge_Regret[edge_idx] += regret_value;
   }
 
@@ -196,6 +200,7 @@ struct TrafficMap {
       PIBT_vertex_Regret[v_to]++;
     }  // Skip if the same vertex
     int e_index = edge_waiting_index(v_from, v_to);
+    if (e_index < 0) return;  // non-adjacent pair; avoid OOB write
     PIBT_edge_Regret[e_index]++;
   }
 
@@ -246,6 +251,7 @@ struct TrafficMap {
         PIBT_vertex_Regret[b]++;
       }  // Skip if the same vertex
       int e_index = edge_waiting_index(a, b);
+      if (e_index < 0) continue;  // non-adjacent pair; avoid OOB write
       PIBT_edge_Regret[e_index]++;
     }
   }
@@ -311,7 +317,12 @@ struct TrafficMap {
   {
     reset_regret_cost();
     std::fill(PIBT_regret_flow.begin(), PIBT_regret_flow.end(), 0);
-    for (int i = starting_makespan; i <= ending_makespan; i++) {
+    // clamp to the cached range; makespans past the cache have no entries
+    long long last_cached =
+        static_cast<long long>(traffic_cache_map.size()) - 1;
+    long long ending =
+        std::min(static_cast<long long>(ending_makespan), last_cached);
+    for (long long i = starting_makespan; i <= ending; i++) {
       const auto& traffic_map = traffic_cache_map[i];
       for (const auto& entry : traffic_map) {
         visited[entry.first.first] = true;
@@ -320,6 +331,7 @@ struct TrafficMap {
           PIBT_vertex_Regret[entry.first.second] += entry.second;
         }
         int e_index = edge_waiting_index(entry.first.first, entry.first.second);
+        if (e_index < 0) continue;  // non-adjacent pair; avoid OOB write
         PIBT_edge_Regret[e_index] += entry.second;
       }
     }
@@ -718,8 +730,11 @@ struct TrafficMap {
 
   void export_PIBT_regret_flow_csv(const std::string& filename) const
   {
-    // std::cout<<"outputing "<< filename << std::endl;
-    std::ofstream fout(filename);
+    // Write to a process-unique temp file, then atomically rename over the
+    // destination. Concurrent solves on the same map share this file; a plain
+    // ofstream(filename) lets another process read a torn/partial file.
+    std::string tmp_filename = filename + ".tmp." + std::to_string(::getpid());
+    std::ofstream fout(tmp_filename);
     fout << "index,PIBT_regret_flow,normalized_PIBT_regret_flow,num_of_agent\n";
     size_t expected =
         static_cast<size_t>(width) * static_cast<size_t>(height) * 5;
@@ -729,6 +744,7 @@ struct TrafficMap {
            << '\n';
     }
     fout.close();
+    std::rename(tmp_filename.c_str(), filename.c_str());
   }
 
   void import_PIBT_regret_flow_csv(const std::string& filename)
@@ -751,9 +767,18 @@ struct TrafficMap {
       size_t p3 = line.find(',', p2 + 1);
       if (p3 == std::string::npos) continue;
       // ignore parsed index (line.substr(0,p1))
-      int input_num_of_agents = std::stoi(line.substr(p3 + 1));
-      PIBT_regret_flow[idx] = std::stod(line.substr(p1 + 1, p2 - (p1 + 1)));
-      normalized_PIBT_regret_flow[idx] = std::stod(line.substr(p2 + 1));
+      // A torn/corrupt line (e.g. written concurrently by another solve)
+      // makes std::stoi/std::stod throw; skip it instead of aborting.
+      double regret, normalized_regret;
+      try {
+        std::stoi(line.substr(p3 + 1));  // input_num_of_agents (unused)
+        regret = std::stod(line.substr(p1 + 1, p2 - (p1 + 1)));
+        normalized_regret = std::stod(line.substr(p2 + 1));
+      } catch (const std::exception&) {
+        continue;
+      }
+      PIBT_regret_flow[idx] = regret;
+      normalized_PIBT_regret_flow[idx] = normalized_regret;
       // PIBT_regret_flow[idx] = std::stod(line.substr(p1 + 1, p2 - (p1 + 1))) /
       // input_num_of_agents * num_of_agents ; normalized_PIBT_regret_flow[idx]
       // = std::stod(line.substr(p2 + 1)) / input_num_of_agents * num_of_agents
